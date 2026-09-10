@@ -1,0 +1,17 @@
+{
+  "name": "小慈・機器人模擬",
+  "short_name": "小慈",
+  "description": "在瀏覽器裡操控兒童機器人：走路、轉彎、坐下、踢球、前滾翻。",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#8fb3d9",
+  "theme_color": "#21489a",
+  "icons": [
+    { "src": "assets/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

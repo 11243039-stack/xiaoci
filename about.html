@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#21489a">
+<title>關於・機器人模擬</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --blue: #21489a; --blue-dark: #142c5f; --blue-soft: #e8eefb;
+    --ink: #1b2436; --muted: #5b6780; --line: #d9e0ee;
+    font-family: "Microsoft JhengHei UI", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: linear-gradient(160deg, #dfe9f7, #b9cfe9) fixed; color: var(--ink); line-height: 1.7; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 18px 48px; }
+  .card { background: #fff; border-radius: 16px; box-shadow: 0 6px 24px rgba(10,30,70,.12); padding: 22px 24px; margin-bottom: 16px; }
+  header.card { display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: center; }
+  header img { width: 120px; height: 120px; object-fit: cover; border-radius: 14px; background: #1c3348; }
+  h1 { margin: 0; font-size: 26px; color: var(--blue-dark); }
+  h2 { margin: 0 0 8px; font-size: 18px; color: var(--blue-dark); }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  a { color: var(--blue); }
+  .back { display: inline-block; margin-top: 10px; padding: 8px 16px; border-radius: 10px; background: var(--blue); color: #fff; text-decoration: none; font-weight: 700; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td:nth-child(3) { white-space: nowrap; }
+  .notice { background: #fff8e6; border: 1px solid #f1d9a0; }
+  @media (max-width: 520px) { header.card { grid-template-columns: 1fr; text-align: center; } header img { margin: 0 auto; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="card">
+    <img src="assets/og.png" alt="小慈機器人">
+    <div>
+      <h1>關於 <span id="name">小慈</span></h1>
+      <p>在瀏覽器裡用<b>物理模擬</b>操控一個兒童機器人：走路、轉彎、坐下、撿東西、踢球、前滾翻。</p>
+      <a class="back" href="./">▶ 回到遊戲</a>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>它是怎麼動的？</h2>
+    <ul>
+      <li><b>物理</b>：<a href="https://mujoco.org" target="_blank" rel="noopener">MuJoCo</a> 物理引擎（WebAssembly 版），每秒計算 200 次。</li>
+      <li><b>動作</b>：機器人的走路、踢球等動作，是 <a href="https://github.com/pollen-robotics/microduck" target="_blank" rel="noopener">Pollen Robotics MicroDuck</a> 開源機器人用<b>強化學習</b>訓練出來的神經網路（每秒 50 次），用 onnxruntime-web 在你的裝置上執行。</li>
+      <li><b>身體</b>：沿用 MicroDuck 的關節位置與重量數據；小慈的外觀是本專題自己設計的，不含 Pollen Robotics 的 3D 模型。</li>
+      <li><b>畫面</b>：three.js。</li>
+    </ul>
+    <p class="muted">全部在你的瀏覽器裡計算，不需要伺服器，也不會上傳任何資料。</p>
+  </section>
+
+  <section class="card">
+    <h2>隱私</h2>
+    <p>本網站不收集個人資料、不使用追蹤或廣告。最佳紀錄、音效開關等設定只儲存在你自己的瀏覽器裡。</p>
+    <p class="muted">使用語音指令時，語音辨識由你的瀏覽器提供（部分瀏覽器會把聲音送到瀏覽器廠商的服務辨識）；本網站不會收到或保存你的聲音。</p>
+  </section>
+
+  <section class="card notice">
+    <h2>聲明</h2>
+    <p>本網站是學生專題作品，<b>不是</b>慈濟大學或 Pollen Robotics 的官方網站或產品。</p>
+  </section>
+
+  <section class="card">
+    <h2>授權與致謝</h2>
+    <div class="table-wrap">
+      <table>
+        <tr><th>項目</th><th>作者</th><th>授權</th></tr>
+        <tr><td>MicroDuck 動作模型（<a href="https://huggingface.co/pollen-robotics/microduck-policies" target="_blank" rel="noopener">microduck-policies</a>，未修改）</td><td>Pollen Robotics</td><td><a href="assets/policies/LICENSE">Apache-2.0</a></td></tr>
+        <tr><td>機器人關節與重量數據、控制方式（<a href="https://github.com/pollen-robotics/microduck_rl" target="_blank" rel="noopener">microduck_rl</a>；本專題移除了原 3D 模型並換上自己的外觀與碰撞形狀）</td><td>Pollen Robotics</td><td><a href="assets/policies/LICENSE">Apache-2.0</a></td></tr>
+        <tr><td><a href="https://github.com/google-deepmind/mujoco" target="_blank" rel="noopener">MuJoCo</a> 3.13.0</td><td>Google DeepMind</td><td><a href="vendor/mujoco/LICENSE">Apache-2.0</a></td></tr>
+        <tr><td><a href="https://github.com/microsoft/onnxruntime" target="_blank" rel="noopener">onnxruntime-web</a> 1.29.0</td><td>Microsoft</td><td><a href="vendor/onnxruntime-web/LICENSE">MIT</a></td></tr>
+        <tr><td><a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> r186</td><td>three.js authors</td><td><a href="vendor/three/LICENSE">MIT</a></td></tr>
+        <tr><td><a href="https://github.com/kazuhikoarase/qrcode-generator" target="_blank" rel="noopener">qrcode-generator</a> 1.4.4</td><td>Kazuhiko Arase</td><td><a href="vendor/qrcode-generator/LICENSE">MIT</a></td></tr>
+      </table>
+    </div>
+  </section>
+</main>
+<script>
+  fetch('assets/name.txt').then((r) => (r.ok ? r.text() : '')).then((t) => {
+    t = t.trim();
+    if (t) { document.getElementById('name').textContent = t; document.title = `關於${t}・機器人模擬`; }
+  }).catch(() => {});
+</script>
+</body>
+</html>

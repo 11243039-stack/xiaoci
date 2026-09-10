@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#21489a">
+<meta name="description" content="在瀏覽器裡操控兒童機器人：走路、轉彎、坐下、踢球、前滾翻。物理模擬，手機也能玩。">
+<title>機器人模擬</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<!-- added to the home screen, iPhones open it full screen like an app -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="小慈">
+<!-- link previews; tools/build_site.py --base-url=... makes these absolute -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="小慈・機器人模擬">
+<meta property="og:description" content="在瀏覽器裡操控兒童機器人小慈：走路、踢球射門、前滾翻。手機也能玩！">
+<meta property="og:image" content="https://11243039-stack.github.io/xiaoci/assets/og.png">
+<meta property="og:url" content="https://11243039-stack.github.io/xiaoci/">
+<meta name="twitter:card" content="summary_large_image">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+<style>
+  :root {
+    --blue: #21489a;
+    --blue-dark: #142c5f;
+    --blue-soft: #e8eefb;
+    --ink: #1b2436;
+    --muted: #5b6780;
+    --card: rgba(255, 255, 255, 0.92);
+    --ok: #2e7d32;
+    --busy: #1f5fbf;
+    --bad: #c62828;
+    --radius: 14px;
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+    font-family: "Microsoft JhengHei UI", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fb3d9; color: var(--ink); overscroll-behavior: none; }
+  body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  [hidden] { display: none !important; }
+
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 24px rgba(10, 30, 70, 0.18);
+  }
+  button {
+    font: inherit; font-size: 15px; color: var(--ink);
+    border: 1px solid #cfd8ea; background: #fff; border-radius: 10px;
+    padding: 10px 6px; cursor: pointer; touch-action: manipulation;
+    transition: background .12s, transform .06s;
+  }
+  button:hover { background: var(--blue-soft); }
+  button:active, button.pressed { transform: scale(0.96); background: #d6e2fa; }
+  button kbd {
+    font: 11px/1 ui-monospace, monospace; color: var(--muted);
+    border: 1px solid #d6dce8; border-radius: 4px; padding: 2px 4px; margin-left: 4px;
+  }
+  .primary { background: var(--blue); color: #fff; border-color: var(--blue); font-weight: 700; }
+  .primary:hover, .primary:active { background: var(--blue-dark); }
+
+  /* --- top bar ------------------------------------------------------------ */
+  #title { position: fixed; top: calc(14px + var(--safe-t)); left: calc(14px + var(--safe-l)); padding: 10px 16px; }
+  #title h1 { margin: 0; font-size: 22px; letter-spacing: 1px; color: var(--blue-dark); }
+  #title p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  #phone-btn { margin-top: 8px; width: 100%; padding: 6px 8px; font-size: 13px; }
+  #status {
+    position: fixed; top: calc(14px + var(--safe-t)); left: 50%; transform: translateX(-50%);
+    padding: 8px 18px; font-size: 16px; font-weight: 700; white-space: nowrap; pointer-events: none;
+  }
+  #status[data-kind="ok"] { color: var(--ok); }
+  #status[data-kind="busy"] { color: var(--busy); }
+  #status[data-kind="bad"] { color: #fff; background: var(--bad); }
+  #status[data-kind="hint"] { color: #8a4b00; background: #fff4d6; }
+  #status[data-kind="goal"] { color: #fff; background: #e0457b; font-size: 20px; animation: pop .5s ease-out; }
+  @keyframes pop { from { transform: translateX(-50%) scale(1.4); } to { transform: translateX(-50%) scale(1); } }
+
+  #score {
+    position: fixed; top: calc(62px + var(--safe-t)); left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 14px; font-size: 15px; white-space: nowrap;
+  }
+  #score b { color: var(--blue-dark); font-size: 17px; }
+  #score .best { color: var(--muted); font-size: 13px; }
+  #score .best b { font-size: 13px; color: var(--muted); }
+  #timer b { color: #c05600; }
+  #challenge-btn { padding: 6px 10px; font-size: 13px; background: var(--blue); color: #fff; border-color: var(--blue); }
+  #challenge-btn:hover { background: var(--blue-dark); }
+  .sheet .big { font-size: 18px; margin: 8px 0; }
+  .sheet .big b { font-size: 34px; color: var(--blue-dark); }
+  .sheet .record { font-size: 18px; font-weight: 700; color: #d4870b; margin: 4px 0; }
+  #tools { position: fixed; top: calc(14px + var(--safe-t)); right: calc(14px + var(--safe-r)); display: flex; gap: 8px; }
+  #tools button { width: 42px; height: 42px; padding: 0; border-radius: 50%; font-size: 18px; box-shadow: 0 4px 14px rgba(10,30,70,.18); }
+
+  /* --- desktop panel -------------------------------------------------------- */
+  #panel {
+    position: fixed; right: 14px; top: 50%; transform: translateY(-50%);
+    width: 300px; padding: 14px; display: grid; gap: 12px;
+  }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .pad .up { grid-column: 2; }
+  .pad .left { grid-column: 1; grid-row: 2; }
+  .pad .stop { grid-column: 2; grid-row: 2; }
+  .pad .right { grid-column: 3; grid-row: 2; }
+  .pad .down { grid-column: 2; grid-row: 3; }
+  .pad button { font-weight: 700; color: var(--blue-dark); touch-action: none; }
+  .pad .stop { color: var(--muted); }
+  .moves { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .reset { background: #fff1dc; border-color: #f3d19c; }
+  .reset:hover { background: #ffe6bf; }
+  .help { margin: 0; font-size: 12px; line-height: 1.55; color: var(--muted); }
+
+  /* --- touch controls (phones / tablets) ------------------------------------ */
+  #touch { display: none; }
+  #joystick {
+    position: fixed; left: calc(18px + var(--safe-l)); bottom: calc(18px + var(--safe-b));
+    width: 136px; height: 136px; border-radius: 50%; touch-action: none;
+    background: radial-gradient(circle, rgba(255,255,255,.55) 0 30%, rgba(255,255,255,.28) 31% 100%);
+    border: 2px solid rgba(255,255,255,.75); box-shadow: 0 6px 20px rgba(10,30,70,.25);
+  }
+  #joystick .knob {
+    position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px;
+    border-radius: 50%; background: var(--blue); border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  }
+  #joystick .hint { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  #joystick .hint span { position: absolute; font-size: 12px; font-weight: 700; color: var(--blue-dark); text-shadow: 0 0 4px #fff; }
+  #touch-actions {
+    position: fixed; right: calc(14px + var(--safe-r)); bottom: calc(14px + var(--safe-b));
+    display: grid; grid-template-columns: repeat(2, 94px); gap: 7px;
+  }
+  #touch-actions button { padding: 11px 4px; font-size: 14px; box-shadow: 0 4px 12px rgba(10,30,70,.18); }
+  #touch-actions .reset { grid-column: 1 / -1; padding: 8px 4px; font-size: 13px; }
+
+  .voice { background: #eef7ee; border-color: #b9dcb9; }
+  .voice.listening, #mic-fab.listening { background: #e0457b; border-color: #e0457b; color: #fff; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(224, 69, 123, 0.2); } }
+  #mic-fab {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(26px + var(--safe-b));
+    width: 64px; height: 64px; border-radius: 50%; font-size: 28px; padding: 0;
+    box-shadow: 0 6px 18px rgba(10,30,70,.3);
+  }
+  #mic-fab:active { transform: translateX(-50%) scale(0.95); }
+  #voice-bubble {
+    position: fixed; left: 50%; transform: translateX(-50%); top: calc(112px + var(--safe-t));
+    max-width: min(460px, 90vw); padding: 8px 16px; font-size: 15px; text-align: center; z-index: 5;
+  }
+  #voice-bubble[data-kind="listening"] { color: #e0457b; font-weight: 700; }
+  #voice-bubble[data-kind="heard"] { color: var(--muted); }
+  #voice-bubble[data-kind="reply"] { color: var(--blue-dark); font-weight: 700; }
+  #voice-bubble[data-kind="error"] { color: var(--bad); }
+
+  #perf { position: fixed; left: 14px; bottom: 12px; font-size: 12px; color: rgba(255,255,255,.9); text-shadow: 0 1px 2px rgba(0,0,0,.4); pointer-events: none; }
+  #credits { position: fixed; right: 14px; bottom: 10px; font-size: 11px; color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  #credits a { color: inherit; }
+
+  /* --- loading / modals --------------------------------------------------------- */
+  #loading {
+    position: fixed; inset: 0; display: grid; place-items: center; z-index: 30;
+    background: linear-gradient(160deg, #cfe0f5, #8fb3d9);
+  }
+  #loading .box { width: min(360px, 88vw); padding: 22px 26px; text-align: center; }
+  #loading h2 { margin: 0 0 12px; font-size: 20px; color: var(--blue-dark); }
+  .bar { height: 10px; border-radius: 6px; background: var(--blue-soft); overflow: hidden; }
+  .bar .fill { height: 100%; width: 0; background: var(--blue); transition: width .2s; }
+  #loading-text { margin-top: 10px; font-size: 14px; }
+  #loading-sub { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  #loading.error .bar, #loading.error #loading-sub { display: none; }
+  #loading.error #loading-text { color: var(--bad); line-height: 1.6; }
+
+  .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(15, 35, 70, 0.45); padding: 16px; }
+  .sheet { width: min(380px, 100%); max-height: 100%; overflow: auto; padding: 18px 20px; text-align: center; }
+  .sheet h2 { margin: 0 0 10px; font-size: 19px; color: var(--blue-dark); }
+  .sheet button { width: 100%; margin-top: 6px; }
+  #qr svg { width: 220px; height: 220px; }
+  .sheet .url { margin: 6px 0; font: 13px ui-monospace, monospace; color: var(--blue); word-break: break-all; }
+  .sheet .note { margin: 6px 0 12px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+  .steps { list-style: none; padding: 0; margin: 4px 0 12px; text-align: left; display: grid; gap: 10px; }
+  .steps li { display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: center; font-size: 14px; line-height: 1.45; }
+  .steps .icon { width: 36px; height: 36px; border-radius: 10px; background: var(--blue-soft); display: grid; place-items: center; font-size: 18px; }
+  .steps b { color: var(--blue-dark); }
+  .only-touch { display: none; }
+
+  /* Narrow desktop windows: the panel becomes a bottom sheet. */
+  @media (max-width: 760px) and (pointer: fine) {
+    #title p, #credits, #perf, .help { display: none; }
+    #status { top: auto; bottom: 250px; }
+    #panel { top: auto; bottom: 0; right: 0; left: 0; transform: none; width: auto; border-radius: var(--radius) var(--radius) 0 0; padding: 10px; grid-template-columns: 1fr 1fr; align-items: start; }
+    #panel .reset { grid-column: 1 / -1; }
+  }
+
+  /* Touch devices: joystick + action buttons, full-screen view. */
+  @media (pointer: coarse) {
+    #panel, #credits, .help, #title p, #phone-btn { display: none !important; }
+    #touch { display: block; }
+    .only-touch { display: revert; }
+    .only-desk { display: none; }
+    #title { padding: 6px 12px; top: calc(8px + var(--safe-t)); left: calc(8px + var(--safe-l)); }
+    #title h1 { font-size: 18px; }
+    #status { font-size: 14px; padding: 6px 12px; top: calc(104px + var(--safe-t)); max-width: 86vw; white-space: normal; text-align: center; }
+    #score { top: calc(56px + var(--safe-t)); gap: 8px; font-size: 13px; padding: 4px 6px 4px 10px; }
+    #score b { font-size: 15px; }
+    #tools { top: calc(8px + var(--safe-t)); right: calc(8px + var(--safe-r)); }
+    #perf { left: 50%; transform: translateX(-50%); bottom: calc(4px + var(--safe-b)); font-size: 10px; }
+    #voice-bubble { top: calc(150px + var(--safe-t)); font-size: 14px; }
+  }
+  @media (pointer: coarse) and (max-width: 420px) {
+    /* narrow phones: the mic sits above the joystick instead of between the pads */
+    #mic-fab { left: calc(86px + var(--safe-l)); bottom: calc(166px + var(--safe-b)); width: 56px; height: 56px; font-size: 24px; }
+    /* (left is the joystick's centre: translateX(-50%) centres the button on it) */
+  }
+  @media (pointer: coarse) and (max-width: 380px) {
+    #touch-actions { grid-template-columns: repeat(2, 84px); }
+    #joystick { width: 120px; height: 120px; }
+  }
+  @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+    #status { top: calc(52px + var(--safe-t)); }
+    #score { top: calc(8px + var(--safe-t)); }
+    #touch-actions { grid-template-columns: repeat(3, 88px); }
+    #touch-actions button { padding: 9px 4px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="view" aria-label="3D 模擬畫面"></canvas>
+
+<div id="title" class="card">
+  <h1 id="robot-name">機器人</h1>
+  <p>兒童機器人・物理模擬</p>
+  <button id="phone-btn" hidden>📱 用手機玩</button>
+</div>
+<div id="status" class="card" data-kind="ok">載入中…</div>
+<div id="score" class="card">
+  <span class="goals">⚽ 進球 <b id="score-num">0</b></span>
+  <span id="timer" hidden>⏱ <b id="timer-num">60</b></span>
+  <span class="best">🏆 <b id="best-num">0</b></span>
+  <button id="challenge-btn">▶ 挑戰 60 秒</button>
+</div>
+<div id="tools">
+  <button id="mute-btn" title="關閉音效" aria-label="音效">🔊</button>
+  <button id="help-btn" title="玩法說明" aria-label="玩法說明">?</button>
+  <button id="fs-btn" title="全螢幕" aria-label="全螢幕" hidden>⛶</button>
+</div>
+
+<!-- desktop -->
+<div id="panel" class="card">
+  <div class="pad">
+    <button class="up" data-dir="up">▲ 前進</button>
+    <button class="left" data-dir="left">◀ 左轉</button>
+    <button class="stop" data-action="stop">■ 停止</button>
+    <button class="right" data-dir="right">右轉 ▶</button>
+    <button class="down" data-dir="down">▼ 後退</button>
+  </div>
+  <div class="moves">
+    <button data-action="y">坐下／站起<kbd>Y</kbd></button>
+    <button data-action="g">低頭撿東西<kbd>G</kbd></button>
+    <button data-action="k">左腳踢球<kbd>K</kbd></button>
+    <button data-action="l">右腳踢球<kbd>L</kbd></button>
+    <button data-action="r">前滾翻<kbd>R</kbd></button>
+    <button data-action="p"><span class="push-label">推一下</span><kbd>P</kbd></button>
+  </div>
+  <button class="reset" data-action="reset">重新開始（跌倒時）<kbd>Backspace</kbd></button>
+  <button class="voice" data-voice>🎤 語音指令<kbd>V</kbd></button>
+  <p class="help">
+    方向鍵：按住＝持續前進／轉向，輕按＝小幅移動<br>
+    Space 停止｜拖曳滑鼠旋轉視角｜滾輪縮放
+  </p>
+</div>
+
+<!-- phones / tablets -->
+<div id="touch">
+  <div id="joystick" aria-label="移動搖桿">
+    <div class="hint"><span style="top:6px">前進</span><span style="bottom:6px">後退</span><span style="left:6px">左</span><span style="right:6px">右</span></div>
+    <div class="knob"></div>
+  </div>
+  <div id="touch-actions">
+    <button data-action="y">坐下／站起</button>
+    <button data-action="g">撿東西</button>
+    <button data-action="k">左腳踢球</button>
+    <button data-action="l">右腳踢球</button>
+    <button data-action="r">前滾翻</button>
+    <button data-action="p" class="push-label">推一下</button>
+    <button class="reset" data-action="reset">↺ 重新開始</button>
+  </div>
+  <button id="mic-fab" data-voice aria-label="語音指令">🎤</button>
+</div>
+
+<div id="voice-bubble" class="card" hidden></div>
+
+<div id="perf"></div>
+<div id="credits">
+  動作模型：<a href="https://huggingface.co/pollen-robotics/microduck-policies" target="_blank" rel="noopener">Pollen Robotics microduck-policies</a>（Apache-2.0）・物理：MuJoCo・<a href="about.html">關於</a>
+</div>
+
+<div id="tutorial" class="modal" hidden>
+  <div class="card sheet">
+    <h2 id="tutorial-title">歡迎！</h2>
+    <ul class="steps">
+      <li><span class="icon">🕹️</span>
+        <span class="only-touch"><b>移動</b>：用左下角的搖桿，往上推前進、往左右推轉彎。</span>
+        <span class="only-desk"><b>移動</b>：鍵盤方向鍵。按住＝一直走，輕按＝走一小步。</span></li>
+      <li><span class="icon">⚽</span>
+        <span class="only-touch"><b>動作</b>：右下角的按鈕：坐下、撿東西、踢球、前滾翻。</span>
+        <span class="only-desk"><b>動作</b>：點右邊的按鈕，或按 Y、G、K、L、R。</span></li>
+      <li><span class="icon">👀</span>
+        <span class="only-touch"><b>視角</b>：一指拖曳畫面旋轉，兩指縮放。</span>
+        <span class="only-desk"><b>視角</b>：拖曳滑鼠旋轉，滾輪縮放。</span></li>
+      <li><span class="icon">🥅</span><span><b>射門</b>：走到球旁邊，球在腳前面時按「踢球」，把球踢進球門！按「▶ 挑戰 60 秒」比比看能進幾球。</span></li>
+      <li><span class="icon">🎤</span><span><b>語音</b>：點麥克風，說「前進」、「左轉」、「坐下」、「踢球」或「你好」。<span class="only-desk">也可以按 V。</span>（需要 https 網址）</span></li>
+      <li><span class="icon">↺</span><span><b>跌倒了？</b>按「重新開始」<span class="only-desk">或 Backspace</span>。</span></li>
+    </ul>
+    <button id="tutorial-go" class="primary">開始玩！</button>
+    <p class="note"><a href="about.html">關於這個網站・授權與致謝</a></p>
+  </div>
+</div>
+
+<div id="result" class="modal" hidden>
+  <div class="card sheet">
+    <h2>時間到！</h2>
+    <p class="big">這次進了 <b id="result-score">0</b> 球</p>
+    <p id="result-record" class="record" hidden>🏆 新紀錄！</p>
+    <p class="note">最佳紀錄：<b id="result-best">0</b> 球</p>
+    <button id="again-btn" class="primary">再挑戰一次</button>
+    <button id="free-btn">自由玩</button>
+  </div>
+</div>
+
+<div id="phone" class="modal" hidden>
+  <div class="card sheet">
+    <h2 id="phone-title">用手機一起玩</h2>
+    <div id="qr"></div>
+    <p class="url" id="phone-url"></p>
+    <p class="note" id="phone-note">手機和這台電腦要連在同一個 Wi-Fi，用相機掃描上面的 QR Code 就能開始玩。</p>
+    <button id="phone-close">關閉</button>
+  </div>
+</div>
+
+<div id="loading">
+  <div class="box card">
+    <h2 id="loading-title">載入中</h2>
+    <div class="bar"><div class="fill" id="loading-fill"></div></div>
+    <div id="loading-text">準備中…</div>
+    <div id="loading-sub">第一次載入約 30 MB，之後會快很多</div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
