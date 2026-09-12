@@ -1,11 +1,52 @@
-// Kid robot web simulator: MuJoCo (WASM) physics + the official MicroDuck
-// policies (onnxruntime-web) + three.js rendering. Runs entirely in the browser.
+// =============================================================================
+// app.js — ไฟล์หลักของเว็บ 小慈 (อ่านไฟล์นี้ก่อนไฟล์อื่น)
+// =============================================================================
 //
-// The control loop mirrors microduck_rl/scripts/infer_policy.py with
-// --new-cmd-obs (61-D observation) and projected gravity; the motors are the
-// scene's own position actuators (the Python BAM motor model has no web port;
-// every move was checked to still work without it).
+// ไฟล์นี้ทำอะไร
+//   เป็น "ผู้คุมวง" ของทั้งเว็บ: โหลดของทุกอย่าง สร้างหุ่นในโลกจำลอง รับปุ่มจาก
+//   ผู้เล่น ส่งให้สมองคิด ขยับมอเตอร์ คำนวณฟิสิกส์ แล้ววาดภาพออกจอ วนแบบนี้ทุกเฟรม
+//   ทุกอย่างรันในเบราว์เซอร์ของคนเล่นเอง ไม่มีเซิร์ฟเวอร์ช่วยคำนวณ
+//
+// ใช้ไลบรารี (ของคนอื่น) อะไรบ้าง   ← เก็บไว้ในโฟลเดอร์ web/vendor/
+//   • three.js          วาดภาพ 3D บนจอ (WebGL)
+//   • MuJoCo (WASM)     โลกจำลองฟิสิกส์ของ Google DeepMind แปลงให้รันในเบราว์เซอร์ได้
+//   • onnxruntime-web   ตัวรันไฟล์สมอง .onnx (โครงข่ายประสาทที่ Pollen Robotics ฝึกไว้)
+// และไฟล์ของเราเอง: face.js (สีหน้า) game.js (เกมเตะบอล) sound.js (เสียง) voice.js (สั่งด้วยเสียง)
+//
+// ไฟล์นี้แบ่งเป็น 9 ส่วน (เรียงจากบนลงล่าง)
+//   ส่วนที่ 1  import         ดึงไลบรารีและไฟล์อื่นเข้ามา
+//   ส่วนที่ 2  ค่าคงที่         ตั้งค่าต่างๆ: ไฟล์ที่ต้องโหลด ท่ายืนตั้งต้น ความเร็วเดิน ฯลฯ
+//   ส่วนที่ 3  ตัวช่วยโหลดไฟล์   ดาวน์โหลดพร้อมแถบ % และเช็กว่าเบราว์เซอร์รองรับไหม
+//   ส่วนที่ 4  class Robot     ตัวหุ่น: ข้อมูลร่างกาย สมอง และ "1 รอบการคิด" (สำคัญที่สุด)
+//   ส่วนที่ 5  class Driver    แปลงปุ่ม/จอยสติ๊ก เป็นคำสั่งความเร็วให้หุ่น
+//   ส่วนที่ 6  buildScene()    สร้างภาพ 3D จากข้อมูลของ MuJoCo และคุมกล้อง
+//   ส่วนที่ 7  UI              ข้อความสถานะ ปุ่มต่างๆ คะแนน ไมค์ จอยสติ๊ก หน้าสอนเล่น
+//   ส่วนที่ 8  main()          จุดเริ่มโปรแกรม: โหลด → ประกอบทุกส่วน → วงรอบหลัก (game loop)
+//   ส่วนที่ 9  QR + error      ปุ่ม QR Code สำหรับมือถือ และหน้าจอแจ้งข้อผิดพลาด
+//
+// ข้อมูลไหลยังไง (ทุกๆ 0.02 วินาที = 50 ครั้งต่อวินาที)
+//
+//   ผู้เล่นกดปุ่ม ─▶ Driver.drive() ─▶ Robot.setVel()      "อยากให้เดินหน้า"
+//                                          │
+//   Robot.step():  observe() ─▶ สมอง ONNX ─▶ ctrl (มุมมอเตอร์ 14 ตัว) ─▶ mj_step ×4
+//                  "ตอนนี้ตัวเอียงแค่ไหน"   "ควรขยับขายังไง"            "ฟิสิกส์คำนวณผล"
+//                                          │
+//   Game.step() ─▶ เช็กบอลเข้าประตู     view.sync() + render() ─▶ ภาพบนจอ
+//
+// ลองเล่นใน Console (กด F12 ในเบราว์เซอร์ → แท็บ Console) พิมพ์เช่น
+//   __sim.robot.push()          ผลักหุ่น
+//   __sim.robot.policy          ดูว่าตอนนี้ใช้สมองท่าไหน
+//   __sim.game.placeBall(1.4,0) วางบอลในประตู
+//
+// (โค้ดส่วนคุมหุ่นแปลงมาจาก microduck_rl/scripts/infer_policy.py ของ Pollen Robotics
+//  ข้อมูลที่ส่งเข้าสมองมี 61 ค่า เรียงเหมือนตอนฝึกทุกตัว ส่วนมอเตอร์ใช้มอเตอร์ธรรมดาของ
+//  MuJoCo แทนโมเดลมอเตอร์ BAM ที่เป็น Python ซึ่งทดสอบแล้วว่าทุกท่ายังทำงานได้)
 
+// =============================================================================
+// ส่วนที่ 1: import — ดึงของจากไฟล์อื่นเข้ามาใช้
+// =============================================================================
+// รูปแบบ  import X from 'ที่อยู่ไฟล์'
+// 'three' เป็นชื่อย่อ ส่วนชื่อจริงกำหนดไว้ใน <script type="importmap"> ของ index.html
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from './vendor/mujoco/mujoco.js';
@@ -15,15 +56,22 @@ import { Game, withGoal } from './game.js';
 import { sfx } from './sound.js';
 import { Voice } from './voice.js';
 
-// The model's static eyes/cheeks; the web draws animated ones instead (face.js).
+// =============================================================================
+// ส่วนที่ 2: ค่าคงที่ (const) — "ตั้งค่า" ของทั้งเกม อยากปรับอะไรเริ่มแก้ตรงนี้ได้
+// =============================================================================
+// const = ตัวแปรที่ตั้งครั้งเดียวแล้วไม่เปลี่ยน   { } = วัตถุ (object) เก็บคู่ ชื่อ: ค่า   [ ] = รายการ (array)
+
+// ตาและแก้มที่ปั้นไว้ในไฟล์หุ่น (สีตาม material 2 ชื่อนี้) จะถูกซ่อน เพราะเว็บวาดสีหน้าที่ขยับได้แทน (face.js)
 const FACE_MATERIALS = ['tcu_eye', 'tcu_blush'];
 
-// Everything is served from this folder (tools/build_site.py puts it there).
+// ไฟล์ที่เว็บต้องโหลด ทั้งหมดอยู่ใน web/assets/ (สคริปต์ tools/build_site.py ก๊อปมาใส่ให้)
 const ASSETS = {
   scene: './assets/scene.xml',
   name: './assets/name.txt',
   policies: './assets/policies/',
 };
+// สมอง 7 ตัว (ไฟล์ .onnx) — ชื่อซ้ายคือชื่อที่โค้ดใช้เรียก ขวาคือชื่อไฟล์จริง
+// หุ่นใช้สมองทีละตัวตามสถานการณ์ เช่น ยืนนิ่งใช้ standing เดินใช้ walking
 const POLICY_FILES = {
   walking: 'alpha_walking.onnx',
   standing: 'alpha_stand.onnx',
@@ -34,15 +82,16 @@ const POLICY_FILES = {
   roulade: 'roulade.onnx',
 };
 
-// --- constants mirrored from infer_policy.py --------------------------------
+// --- ค่าที่ต้องตรงกับตอนฝึกสมอง (คัดลอกมาจาก infer_policy.py) ห้ามแก้เล่น ---------
+// ท่ายืนตั้งต้นของมอเตอร์ 14 ตัว (หน่วยเรเดียน) สมองจะตอบเป็น "ขยับเพิ่มจากท่านี้เท่าไหร่"
 const DEFAULT_POSE = Float32Array.from([
   0.0, -0.0873, -0.4579, -0.0049, 0.4530,   // left hip yaw/roll/pitch, knee, ankle
   0.3491, 0.3491, 0.0, 0.0,                 // neck pitch, head pitch/yaw/roll
   0.0, 0.0873, 0.4579, 0.0049, -0.4530,     // right leg
 ]);
-const TIMESTEP = 0.005;
-const DECIMATION = 4;
-const CONTROL_DT = TIMESTEP * DECIMATION;   // 50 Hz policy
+const TIMESTEP = 0.005;                     // ฟิสิกส์คำนวณทีละ 0.005 วินาที
+const DECIMATION = 4;                       // สมองคิด 1 ครั้ง ต่อฟิสิกส์ 4 ครั้ง
+const CONTROL_DT = TIMESTEP * DECIMATION;   // = 0.02 วินาที → สมองคิด 50 ครั้ง/วินาที (50 Hz)
 const SWITCH_THRESHOLD = 0.05;              // |velocity command| walking <-> standing
 const GROUND_PICK_PERIOD = 4.0;
 const GROUND_PICK_END = 0.7;                // phase at which one pick is done
@@ -51,8 +100,8 @@ const BALL_OFFSET_X = 0.09, BALL_OFFSET_ABS_Y = 0.042, BALL_RADIUS = 0.035;
 const PUSH_SPEED = 1.0;
 const START_HEIGHT = 0.125;
 
-// --- game-style driving (same feel as duck_easy.py) -------------------------
-const FORWARD = 0.3, BACKWARD = -0.3;       // m/s, the walking policy's range
+// --- ความรู้สึกตอนบังคับ (ปรับเล่นได้ ลองเปลี่ยนแล้วรีเฟรชหน้าเว็บดูผล) -------------
+const FORWARD = 0.3, BACKWARD = -0.3;       // m/s, the walking policy's range (สมองถูกฝึกมาไม่เกิน ±0.3)
 const TURN = 1.5;                           // rad/s; at 1.0 the gait barely turns
 const MIN_PRESS = 0.5;                      // s a tap keeps a move going (~15 deg)
 const STAND_UP_TIME = 2.0;                  // s the sit/stand policy needs to rise
@@ -65,13 +114,21 @@ const ORT_BASE = new URL('./vendor/onnxruntime-web/', import.meta.url).href;
 const ORT_WASM = { url: `${ORT_BASE}ort-wasm-simd-threaded.wasm`, bytes: 13961845 };
 const POLICY_BYTES = 793700;  // each policy file is about this big
 
+// =============================================================================
+// ส่วนที่ 3: ตัวช่วยโหลดไฟล์ + แถบ % + เช็กว่าเบราว์เซอร์รองรับไหม
+// =============================================================================
+
+// $('ชื่อid') = หา element ในหน้า index.html ที่มี id นั้น (ย่อจาก document.getElementById)
+// (id) => ... คือ "arrow function" = ฟังก์ชันแบบสั้น รับ id แล้วคืนค่าทางขวาของ =>
 const $ = (id) => document.getElementById(id);
 
+// เปลี่ยนข้อความใต้แถบโหลด
 function setLoading(text) {
   $('loading-text').textContent = text;
 }
 
 // --- downloads with one combined progress bar --------------------------------
+// Map = ตารางเก็บคู่ key→value  ใช้จำว่าแต่ละไฟล์โหลดไปกี่ไบต์แล้ว (loaded) และต้องโหลดทั้งหมดกี่ไบต์ (expected)
 const progress = { loaded: new Map(), expected: new Map() };
 
 function showProgress() {
@@ -85,6 +142,8 @@ function showProgress() {
   $('loading-title').textContent = `載入中 ${pct}%`;
 }
 
+// ดาวน์โหลด 1 ไฟล์ แล้วคืน "Promise" (สัญญาว่าจะได้ของทีหลัง เพราะโหลดต้องใช้เวลา)
+// ผู้เรียกใช้ต้อง await หรือ .then() เพื่อรอผล
 // XMLHttpRequest rather than a streamed fetch: same progress events, and Chrome
 // does not report the finished downloads as "aborted" (it did for fetch streams).
 function download(url, expectedBytes) {
@@ -105,6 +164,7 @@ function download(url, expectedBytes) {
   });
 }
 
+// เบราว์เซอร์ต้องมี WebAssembly (รัน MuJoCo/ONNX) และ WebGL2 (วาด 3D) ถ้าขาดอย่างใดคืนข้อความเหตุผล
 function unsupportedReason() {
   if (typeof WebAssembly !== 'object') return '這個瀏覽器不支援 WebAssembly。';
   const gl = document.createElement('canvas').getContext('webgl2');
@@ -112,15 +172,35 @@ function unsupportedReason() {
   return null;
 }
 
+// =============================================================================
+// ส่วนที่ 4: class Robot — ตัวหุ่น 1 ตัว (สมอง + ร่างกายในโลกจำลอง)
+// =============================================================================
+// class = "แม่พิมพ์" ของวัตถุ  new Robot(...) = สร้างหุ่นจากแม่พิมพ์นี้ (ทำใน main() ส่วนที่ 8)
+// this.xxx = ข้อมูลที่หุ่นตัวนี้จำไว้   ฟังก์ชันใน class เรียกว่า method เช่น robot.reset()
+//
+// ความรู้ MuJoCo ที่ต้องใช้ในส่วนนี้
+//   model = แบบแปลนที่ไม่เปลี่ยน (มีข้อต่ออะไร หนักเท่าไหร่) โหลดจาก assets/scene.xml
+//   data  = สถานะ ณ ตอนนี้ ที่เปลี่ยนทุกขั้นเวลา
+//     data.qpos  ตำแหน่ง: 7 ตัวแรกของหุ่นคือ x,y,z + การหมุน (quaternion 4 ตัว) ตามด้วยมุมข้อต่อ
+//     data.qvel  ความเร็วของแต่ละอย่าง
+//     data.ctrl  คำสั่งมอเตอร์ (มุมที่อยากให้แต่ละข้อหมุนไป) ← เราเขียนค่านี้
+//   mj_step(model, data) = เดินเวลาไป 1 ขั้น (0.005 วินาที) แล้วฟิสิกส์คำนวณผลให้
+//   ข้อมูลเก็บเป็นแถวตัวเลขยาวๆ เลยต้องจำ "ที่อยู่" (adr) ว่าของแต่ละอย่างอยู่ช่องไหน
+//
+// สถานะ (state) ของหุ่น: policy บอกว่าตอนนี้ใช้สมองตัวไหน
+//   'standing' ยืนนิ่ง   'walking' เดิน/หัน   'sit' นั่ง/ลุก   'ground_pick' ก้มคาบของ
+//   'kick_left' / 'kick_right' / 'roulade' ท่าพิเศษที่ทำจนจบเองตามเวลาใน BEHAVIOR_DURATION
 // ============================================================================
 // Robot: state machine + policy inference (port of PolicyInference)
 // ============================================================================
 class Robot {
+  // constructor = ทำงานครั้งเดียวตอนสร้างหุ่น: จำของที่ได้รับ และหา "ที่อยู่" ของส่วนต่างๆ ในข้อมูล MuJoCo
   constructor(mujoco, model, data, sessions) {
     this.mj = mujoco;
     this.model = model;
     this.data = data;
-    this.sessions = sessions;
+    this.sessions = sessions;   // สมองทั้ง 7 ตัว เรียกด้วยชื่อ เช่น this.sessions.walking
+    // ฟังก์ชันช่วย: หาเลขประจำตัวของสิ่งของจากชื่อในไฟล์ XML เช่น body ชื่อ 'trunk_base' (ลำตัว)
     const id = (type, name) => mujoco.mj_name2id(model, mujoco.mjtObj[type].value, name);
 
     this.trunk = id('mjOBJ_BODY', 'trunk_base');
@@ -132,13 +212,15 @@ class Robot {
     this.ballQvel = ball >= 0 ? model.jnt_dofadr[ball] : -1;
     this.gyroAdr = model.sensor_adr[id('mjOBJ_SENSOR', 'imu_ang_vel')];
 
-    this.nu = model.nu;
+    this.nu = model.nu;   // จำนวนมอเตอร์ = 14 (ขา 5×2 + คอ/หัว 4)
+    // หาว่ามอเตอร์แต่ละตัวต่อกับข้อต่อไหน และมุม/ความเร็วของข้อนั้นอยู่ช่องไหนใน qpos/qvel
     const trn = model.actuator_trnid;
     this.jointQpos = [], this.jointQvel = [];
     for (let i = 0; i < this.nu; i++) {
       this.jointQpos.push(model.jnt_qposadr[trn[2 * i]]);
       this.jointQvel.push(model.jnt_dofadr[trn[2 * i]]);
     }
+    // ช่องเก็บ "สิ่งที่หุ่นรับรู้" ส่งให้สมอง = 3 + 3 + 14×3 + 13 = 61 ค่า (ดู observe())
     this.obs = new Float32Array(3 + 3 + 3 * this.nu + 13);
     this.simTime = 0;       // seconds of simulation since the page opened (never reset)
     this.pushedAt = -10;
@@ -146,8 +228,9 @@ class Robot {
     this.reset();
   }
 
+  // วางหุ่นกลับจุดเริ่ม ท่ายืนตั้งต้น (ปุ่ม「重新開始」/ Backspace เรียกฟังก์ชันนี้)
   reset() {
-    const { mj, model, data } = this;
+    const { mj, model, data } = this;   // เขียนย่อของ const mj = this.mj; const model = this.model; ...
     mj.mj_resetData(model, data);
     const q = data.qpos;
     q.set([0, 0, START_HEIGHT, 1, 0, 0, 0], this.freeQpos);
@@ -165,12 +248,17 @@ class Robot {
   }
 
   // -- commands (the keyboard/panel side calls these) -------------------------
+  // ---- คำสั่งที่ปุ่ม/เสียงเรียกใช้ ------------------------------------------------
+  // ตั้งความเร็ว: vx เดินหน้า(+)/ถอย(-) m/s, vy เดินข้าง, wz หันซ้าย(+)/ขวา(-) rad/s
+  // ถ้าความเร็วเกือบ 0 ใช้สมองยืน ถ้าไม่ใช่ใช้สมองเดิน (ยกเว้นกำลังทำท่าอื่นอยู่)
   setVel(vx, vy, wz) {
     this.vel = [vx, vy, wz];
     if (this.pick || this.sitMode || this.behavior) return;
     this.policy = Math.hypot(vx, vy, wz) <= SWITCH_THRESHOLD ? 'standing' : 'walking';
   }
 
+  // นั่ง ⇄ ลุก (ใช้สมองตัวเดียว คำสั่งช่องแรก 1 = นั่ง 0 = ยืน)
+  // this.events.push(...) = ฝากข้อความ "เพิ่งนั่ง" ไว้ ให้ส่วนเสียง/สีหน้ามาอ่านทีหลัง
   toggleSit() {
     if (this.pick || this.behavior) return;
     this.sitMode = !this.sitMode;
@@ -179,6 +267,7 @@ class Robot {
     this.events.push(this.sitMode ? 'sit' : 'stand');
   }
 
+  // ก้มคาบของ: สมองตัวนี้ต้องการ "จังหวะ" (phase) ที่นับจาก 0 ขึ้นไป ดู command() และ step()
   triggerPick() {
     if (this.pick || this.sitMode || this.behavior) return;
     this.pick = true;
@@ -187,6 +276,7 @@ class Robot {
     this.events.push('pick');
   }
 
+  // ท่าพิเศษ (เตะซ้าย/เตะขวา/ตีลังกา): สลับไปใช้สมองท่านั้นจนหมดเวลา แล้ว step() จะสลับกลับเอง
   triggerBehavior(name) {
     if (this.behavior || this.pick || this.sitMode) return;
     // The kick policies were trained with the ball set just in front of the
@@ -200,6 +290,7 @@ class Robot {
     this.events.push(name === 'roulade' ? 'roll' : 'kick');
   }
 
+  // ผลัก: ตั้งความเร็วลำตัวไปทิศสุ่ม 1 m/s เหมือนมีคนผลัก (ทดสอบว่าสมองทรงตัวได้ไหม)
   push() {
     const a = Math.random() * 2 * Math.PI;
     const v = this.data.qvel;
@@ -209,6 +300,8 @@ class Robot {
     this.events.push('push');
   }
 
+  // get = อ่านได้เหมือนตัวแปร (robot.yaw) แต่คำนวณใหม่ทุกครั้ง
+  // yaw = หุ่นหันไปทางไหน (เรเดียน) แปลงจาก quaternion ของลำตัว
   get yaw() {
     const q = this.data.qpos, a = this.freeQpos;
     const [qw, qx, qy, qz] = [q[a + 3], q[a + 4], q[a + 5], q[a + 6]];
@@ -232,6 +325,7 @@ class Robot {
     return left >= 0 ? 'kick_left' : 'kick_right';
   }
 
+  // วางบอลตรงหน้าเท้าที่จะเตะพอดี (ตำแหน่งเดียวกับตอนฝึกสมองท่าเตะ)
   placeBall(kick) {
     if (this.ballQpos < 0) return;
     const q = this.data.qpos;
@@ -245,6 +339,12 @@ class Robot {
   }
 
   // -- one 20 ms control step ----------------------------------------------
+  // ---- หัวใจของโปรเจกต์: 1 รอบการคิด ทุก 0.02 วินาที -------------------------------
+  //   command()  "ถูกสั่งให้ทำอะไร" (13 ค่า)
+  //   observe()  "ร่างกายตอนนี้เป็นยังไง" + คำสั่ง = 61 ค่า
+  //   step()     ส่ง 61 ค่าเข้าสมอง → ได้ 14 ค่า (ขยับมอเตอร์) → ฟิสิกส์เดิน 4 ขั้น
+
+  // คำสั่ง 13 ช่อง: [ความเร็ว 3 ช่อง, ท่าหัว 4 ช่อง, ท่าลำตัว 6 ช่อง] ในเว็บเราใช้แค่ 3 ช่องแรก
   command() {
     const c = new Float32Array(13);  // [twist(3), head pose(4), body pose(6)]
     if (this.behavior) return c;     // kicks/roll were trained on an all-zero command
@@ -257,6 +357,13 @@ class Robot {
     return c;
   }
 
+  // สิ่งที่สมองรับรู้ 61 ค่า (ลำดับต้องตรงกับตอนฝึกเป๊ะ ไม่อย่างนั้นสมองจะงง):
+  //   [0-2]   ความเร็วการหมุนของลำตัว (จากเซนเซอร์ gyro)
+  //   [3-5]   ทิศของแรงโน้มถ่วงเทียบกับลำตัว = "ตัวเอียงไปทางไหน"
+  //   [6-19]  มุมข้อต่อ 14 ข้อ (ลบท่าตั้งต้นออก)
+  //   [20-33] ความเร็วข้อต่อ 14 ข้อ
+  //   [34-47] สิ่งที่สมองสั่งไปรอบที่แล้ว 14 ค่า
+  //   [48-60] คำสั่ง 13 ช่อง (จาก command())
   observe() {
     const { data, obs, nu } = this;
     const s = data.sensordata;
@@ -279,7 +386,9 @@ class Robot {
     return obs;
   }
 
+  // async = ฟังก์ชันนี้มีจุดที่ต้อง "รอ" (await) — ตรง session.run ที่ให้สมองคิด
   async step() {
+    // 1) เดินนาฬิกาของท่าที่มีเวลาจำกัด ถ้าจบแล้วสลับกลับไปใช้สมองเดิน
     if (this.pick) {
       this.pickPhase += CONTROL_DT / GROUND_PICK_PERIOD;
       if (this.pickPhase >= GROUND_PICK_END) {
@@ -296,18 +405,22 @@ class Robot {
         this.policy = 'walking';
       }
     }
+    // 2) เลือกสมองตามสถานะปัจจุบัน แล้วส่ง 61 ค่าเข้าไปคิด (Tensor = ก้อนตัวเลขขนาด 1×61)
     const session = this.sessions[this.policy];
     const input = new ort.Tensor('float32', Float32Array.from(this.observe()), [1, this.obs.length]);
     const out = await session.run({ [session.inputNames[0]]: input });
+    // 3) สมองตอบ 14 ค่า = ขยับแต่ละข้อจากท่าตั้งต้นไปเท่าไหร่ → เขียนลง ctrl ให้มอเตอร์
     const action = out[session.outputNames[0]].data;
     this.lastAction = Float32Array.from(action);
     const ctrl = this.data.ctrl;
     for (let i = 0; i < this.nu; i++) ctrl[i] = DEFAULT_POSE[i] + action[i];
+    // 4) ให้ฟิสิกส์เดินเวลา 4 ขั้น × 0.005 วินาที = 0.02 วินาที
     for (let i = 0; i < DECIMATION; i++) this.mj.mj_step(this.model, this.data);
     this.simTime += CONTROL_DT;
   }
 
   // -- read-outs for the UI -------------------------------------------------
+  // ---- ค่าที่ส่วนแสดงผลอ่าน: ตำแหน่งลำตัว [x, y, z] เมตร และ "ล้มหรือยัง" -----------
   get position() {
     const p = this.data.xpos, k = 3 * this.trunk;
     return [p[k], p[k + 1], p[k + 2]];
@@ -319,6 +432,13 @@ class Robot {
   }
 }
 
+// =============================================================================
+// ส่วนที่ 5: class Driver — แปลง "ปุ่มที่กดค้างอยู่" เป็นความเร็วส่งให้หุ่น
+// =============================================================================
+// ปุ่มลูกศร ปุ่มบนจอ จอยสติ๊ก และคำสั่งเสียง ทั้งหมดมาเรียก press()/release() ของที่นี่
+// แล้ว drive() (ถูกเรียกทุก 0.02 วินาทีใน main) จะตัดสินว่าจะเดิน/หันเท่าไหร่
+//   held  = ทิศที่ถูกกดค้างอยู่ตอนนี้ (Set = กลุ่มของที่ไม่ซ้ำ)
+//   until = ถ้าแตะแป๊บเดียว ให้ขยับต่อจนถึงเวลานี้ (อย่างน้อย MIN_PRESS วินาที) → "ขยับทีละนิด"
 // ============================================================================
 // Input: hold-to-move keys and buttons, taps still move a little
 // ============================================================================
@@ -327,7 +447,7 @@ class Driver {
     this.robot = robot;
     this.held = new Set();
     this.until = { up: 0, down: 0, left: 0, right: 0 };
-    this.busyUntil = 0;
+    this.busyUntil = 0;   // ช่วงกำลังลุกจากนั่ง ห้ามสั่งเดิน (ไม่อย่างนั้นล้ม)
   }
 
   press(dir) {
@@ -348,7 +468,8 @@ class Driver {
   drive() {
     const r = this.robot;
     if (r.behavior || r.pick) return;  // a kick / roll / pick finishes on its own
-    const now = performance.now() / 1000;
+    const now = performance.now() / 1000;   // เวลาตอนนี้ (วินาที)
+    // true - false = 1 ใน JavaScript → fwd เป็น 1 (เดินหน้า) / -1 (ถอย) / 0 (ไม่กด)
     const fwd = this.active('up', now) - this.active('down', now);
     const turn = this.active('left', now) - this.active('right', now);
     if (r.sitMode) {
@@ -365,9 +486,22 @@ class Driver {
   get standingUp() { return performance.now() / 1000 < this.busyUntil; }
 }
 
+// =============================================================================
+// ส่วนที่ 6: buildScene() — วาดภาพ 3D ด้วย three.js
+// =============================================================================
+// MuJoCo คำนวณฟิสิกส์แต่ "ไม่วาดภาพ" ในเว็บ เราเลยให้ three.js วาดแทน:
+//   1. อ่านทุกชิ้นส่วน (geom) จาก model แล้วสร้างรูปทรง three.js ที่หน้าตาเหมือนกัน (ครั้งเดียว)
+//   2. ทุกเฟรม sync() ก๊อปตำแหน่ง/การหมุนล่าสุดของแต่ละชิ้นจาก data มาใส่ภาพ
+// ส่วนประกอบของ three.js ที่ใช้:
+//   renderer = ตัววาดลง <canvas id="view">   scene = ฉากที่เก็บของทุกชิ้น
+//   camera   = กล้อง                          controls = ลากเมาส์/นิ้วหมุนกล้อง (OrbitControls)
+//   light    = แสง (ท้องฟ้า + ดวงอาทิตย์ทำเงา)  mesh = รูปทรง (geometry) + ผิว/สี (material)
+// ฟังก์ชันนี้คืน "กล่องเครื่องมือ" { sync, follow, render, setQuality, ... } ให้ main() ใช้
 // ============================================================================
 // Rendering: one three.js mesh per visible MuJoCo geom
 // ============================================================================
+
+// ลายตารางหมากรุกของพื้น: วาดลงผืนผ้าใบ 256×256 แล้วเอาไปปูซ้ำๆ
 function checkerTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
@@ -413,6 +547,7 @@ function buildScene(mujoco, model, canvas) {
   Object.assign(sun.shadow.camera, { left: -0.6, right: 0.6, top: 0.6, bottom: -0.6, near: 0.1, far: 5 });
   scene.add(sun, sun.target);
 
+  // ---- สร้างภาพให้ทุกชิ้นส่วน: ดูชนิดของชิ้น (ทรงกลม กล่อง แคปซูล mesh ฯลฯ) แล้วสร้างรูปทรงแบบเดียวกัน ----
   const T = mujoco.mjtGeom;
   const types = model.geom_type, sizes = model.geom_size, groups = model.geom_group;
   const matid = model.geom_matid, matRgba = model.mat_rgba, matEmission = model.mat_emission;
@@ -467,6 +602,8 @@ function buildScene(mujoco, model, canvas) {
     meshes.push([i, mesh]);
   }
 
+  // ทุกเฟรม: เอาตำแหน่ง (geom_xpos) และการหมุน (geom_xmat เมทริกซ์ 3×3) ของแต่ละชิ้นจาก MuJoCo
+  // มาใส่เป็นเมทริกซ์ 4×4 ของภาพ three.js ภาพจึงขยับตามฟิสิกส์
   function sync(data) {
     const xp = data.geom_xpos, xm = data.geom_xmat;
     for (const [i, mesh] of meshes) {
@@ -479,6 +616,7 @@ function buildScene(mujoco, model, canvas) {
     }
   }
 
+  // ---- กล้อง: ตำแหน่งเริ่มต้นตามขนาดจอ + ตามตัวหุ่นไปเรื่อยๆ ----
   // Where the camera starts, relative to the robot. Wide screens look between
   // the robot and the goal 1.3 m ahead so both are in view; tall phone screens
   // are too narrow for that and frame the robot, aiming low so it sits above
@@ -519,6 +657,7 @@ function buildScene(mujoco, model, canvas) {
   window.addEventListener('resize', resize);
   resize();
 
+  // ---- คุณภาพภาพ: ความละเอียด (pixel ratio) และเงา ยิ่งต่ำยิ่งลื่นบนเครื่องช้า ----
   // Graphics quality, stepped down automatically on slow devices (see main).
   const QUALITY = {
     high: { ratio: Math.min(window.devicePixelRatio, 1.5), shadows: true },
@@ -536,6 +675,7 @@ function buildScene(mujoco, model, canvas) {
     resize();
   }
 
+  // คืนเครื่องมือให้ main() ใช้ (ตัวแปรข้างในฟังก์ชันนี้ ข้างนอกมองไม่เห็น ยกเว้นที่คืนออกไป)
   return {
     scene, sync, follow, setQuality,
     get quality() { return quality; },
@@ -543,9 +683,24 @@ function buildScene(mujoco, model, canvas) {
   };
 }
 
+// =============================================================================
+// ส่วนที่ 7: UI — เชื่อมปุ่มและข้อความในหน้าเว็บ (index.html) เข้ากับหุ่น
+// =============================================================================
+// หลักการ: หา element ด้วย $('id') หรือ document.querySelectorAll('[data-...]')
+// แล้ว addEventListener('click' / 'keydown' / 'pointerdown', ฟังก์ชัน) = "เมื่อเกิดเหตุการณ์นี้ ให้ทำสิ่งนี้"
+// ฟังก์ชันในส่วนนี้:
+//   statusText()    ข้อความป้ายสถานะตรงกลางบน (ภาษาจีน)
+//   wireGame()      ปุ่มท้าทาย 60 วินาที หน้าสรุปผล ปุ่มเสียง
+//   wireVoice()     ปุ่มไมค์ + ปุ่ม V + กล่องข้อความเสียง
+//   showScore()     อัปเดตตัวเลขคะแนน/เวลา   showResult() เปิดหน้าสรุปผล
+//   wireControls()  คีย์บอร์ด ปุ่มบนจอ เต็มจอ กันซูมบนมือถือ
+//   wireJoystick()  จอยสติ๊กบนจอสัมผัส      wireTutorial() หน้าสอนเล่น
 // ============================================================================
 // UI
 // ============================================================================
+
+// เลือกข้อความสถานะตามลำดับความสำคัญ: ยิงเข้า > ล้ม > บอลอยู่หน้าเท้า > กำลังทำท่า > นั่ง > เดิน/ยืน
+// คืนค่าเป็น [ข้อความ, ชนิด] ชนิดใช้เลือกสีใน CSS (#status[data-kind="..."])
 function statusText(robot, driver, name, game) {
   const touch = matchMedia('(pointer: coarse)').matches;
   if (game.celebrating) return ['進球！🎉', 'goal'];
@@ -630,6 +785,8 @@ function showResult(game) {
   $('result').hidden = false;
 }
 
+// ผูกปุ่มทั้งหมด: actions คือตาราง "ชื่อการกระทำ → ฟังก์ชัน" ปุ่มในหน้าเว็บใช้ data-action="y" ฯลฯ
+// อยากเพิ่มปุ่มใหม่: ①เพิ่มบรรทัดใน actions ②เพิ่ม <button data-action="ชื่อ"> ใน index.html
 function wireControls(robot, driver, name) {
   const actions = {
     y: () => robot.toggleSit(),
@@ -752,6 +909,14 @@ function wireTutorial(name) {
   if (!seen) open();
 }
 
+// =============================================================================
+// ส่วนที่ 8: main() — จุดเริ่มต้นของโปรแกรม
+// =============================================================================
+// ลำดับงาน:
+//   ① เช็กเบราว์เซอร์ → ② อ่านชื่อหุ่น + หน้าสอนเล่น → ③ ดาวน์โหลดทุกไฟล์พร้อมกัน (แถบ %)
+//   ④ เตรียมสมอง 7 ตัว → ⑤ สร้างโลก MuJoCo (ใส่ประตูฟุตบอล) → ⑥ สร้างหุ่น เกม ภาพ สีหน้า และผูกปุ่ม
+//   ⑦ ปิดหน้าโหลด → ⑧ เริ่ม "วงรอบหลัก" frame() ที่เบราว์เซอร์เรียกประมาณ 60 ครั้งต่อวินาที
+// await = "รอให้งานนี้เสร็จก่อนค่อยทำบรรทัดต่อไป" ใช้ได้ในฟังก์ชันที่ประกาศว่า async
 // ============================================================================
 // Boot
 // ============================================================================
@@ -780,6 +945,7 @@ async function main() {
   });
   const policyBytes = Object.fromEntries(Object.entries(POLICY_FILES).map(
     ([key, file]) => [key, download(ASSETS.policies + file, POLICY_BYTES)]));
+  // Promise.all = รอทุกงานดาวน์โหลดเสร็จพร้อมกัน (โหลดขนานกันเร็วกว่าทีละไฟล์)
   const [mujoco] = await Promise.all([mujocoReady, ortReady, ...Object.values(policyBytes)]);
 
   setLoading('準備動作模型…');
@@ -791,6 +957,7 @@ async function main() {
   setLoading('建立場景…');
   // The policies run at 50 Hz on a 5 ms physics step, as in infer_policy.py.
   const xml = withGoal((await xmlText).replace(/<mujoco([^>]*)>/, `<mujoco$1>\n  <option timestep="${TIMESTEP}"/>`));
+  // ประกอบทุกชิ้นส่วนเข้าด้วยกัน (แต่ละตัวมาจากส่วนที่ 4–7 และไฟล์ face/game/voice)
   const model = mujoco.MjModel.from_xml_string(xml);
   const data = new mujoco.MjData(model);
   const robot = new Robot(mujoco, model, data, sessions);
@@ -806,6 +973,7 @@ async function main() {
   $('loading').hidden = true;
 
   // Sounds and the face react to what just happened.
+  // หุ่นกับเกมฝาก "เหตุการณ์" ไว้ใน events (เช่น 'kick', 'goal') ตรงนี้หยิบออกมาเล่นเสียงทีละอัน
   const SOUND_OF = { sit: 'sit', stand: 'stand', pick: 'pick', roll: 'roll', push: 'push', hit: 'kick', goal: 'goal' };
   let wasFallen = false;
   function react() {
@@ -818,6 +986,7 @@ async function main() {
     if (fallen && !wasFallen) sfx.play('fall');
     wasFallen = fallen;
   }
+  // เลือกสีหน้าตามสถานการณ์ (ชื่อสีหน้าต้องมีใน face.js) อันบนสุดที่เป็นจริงชนะ
   function expression() {
     if (game.celebrating) return 'love';
     if (voice.listening) return 'curious';
@@ -830,6 +999,11 @@ async function main() {
     return 'happy';
   }
 
+  // ---- วงรอบหลัก (game loop) --------------------------------------------------------
+  // requestAnimationFrame(frame) = "ขอให้เรียก frame() อีกทีตอนจอพร้อมวาดภาพถัดไป" (~60 ครั้ง/วินาที)
+  // แต่สมองต้องคิดทุก 0.02 วินาทีพอดี (50 ครั้ง/วินาที) เลยนับเวลาจริงแล้ว "ตามให้ทัน":
+  // เฟรมนี้ถึงเวลาคิดกี่รอบก็คิดเท่านั้น (ไม่เกิน 6 รอบ ถ้าเครื่องช้ามากก็ปล่อยให้ช้าลง)
+  // ในแต่ละเฟรม: ①คิด+ฟิสิกส์ ②เสียง/เหตุการณ์ ③อัปเดตภาพและสีหน้า ④ข้อความสถานะ/คะแนน ⑤วัด FPS ปรับคุณภาพ
   // Fixed 50 Hz control, catching up with real time; slow machines just run slower.
   let simTime = 0, wallStart = performance.now() / 1000, stepping = false;
   let frames = 0, fpsClock = performance.now(), speedSim = 0;
@@ -892,6 +1066,9 @@ async function main() {
   requestAnimationFrame(frame);
 }
 
+// =============================================================================
+// ส่วนที่ 9: ปุ่ม QR สำหรับมือถือ + หน้าจอแจ้ง error + สั่งเริ่มโปรแกรม
+// =============================================================================
 // QR code for phones:
 //  - on this computer under tools/serve.py --lan: the address phones on the same Wi-Fi use;
 //  - on a public https site: the page's own address, to share it.
@@ -938,5 +1115,7 @@ function showError(err) {
   setLoading(`發生錯誤：${err.message || err}${offline}`);
 }
 
+// สองบรรทัดสุดท้ายนี้คือที่ที่ทุกอย่าง "เริ่มจริง" (บรรทัดข้างบนแค่ประกาศฟังก์ชันไว้)
+// .catch(showError) = ถ้า main() พังตรงไหน ให้แสดงข้อความ error บนจอแทนที่จะเงียบหาย
 main().catch(showError);
 offerPhoneQr();

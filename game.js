@@ -1,6 +1,22 @@
-// 踢球射門: a goal on the field, goals are counted, and a 60-second challenge
-// with a best score kept in this browser.
+// =============================================================================
+// game.js — มินิเกม「踢球射門」เตะบอลเข้าประตู
+// =============================================================================
+//
+// ไฟล์นี้แบ่งเป็น 3 ส่วน
+//   ส่วนที่ 1  ค่าคงที่ของเกม: ตำแหน่ง/ขนาดประตู เวลาท้าทาย แรงหน่วงของบอล  ← ปรับเกมตรงนี้
+//   ส่วนที่ 2  withGoal(xml): เอาข้อความ XML ของประตูไปแทรกในไฟล์ฉาก ก่อน MuJoCo สร้างโลก
+//              (ประตูจึงเป็นของจริงในฟิสิกส์ บอลและหุ่นชนได้)
+//   ส่วนที่ 3  class Game: ทุก 0.02 วินาที step() จะ ①หน่วงบอลให้ค่อยๆ หยุด ②เช็กบอลเข้าประตู
+//              ③บอลออกนอกสนามก็เอากลับมา ④นับเวลาโหมดท้าทาย และจำสถิติสูงสุดใน localStorage
+//
+// ต่อกับไฟล์อื่นยังไง
+//   app.js: withGoal(...) ตอนโหลดฉาก, new Game(robot), game.step() ในวงรอบหลัก
+//           อ่าน game.score / game.timeLeft / game.celebrating ไปแสดงบนจอ
+//   ส่ง "เหตุการณ์" ออกทาง this.events ('goal', 'hit', 'challenge-end') ให้ app.js เล่นเสียง
+//
+// localStorage = ที่เก็บข้อมูลเล็กๆ ในเบราว์เซอร์ของผู้เล่นเอง (ปิดเว็บแล้วยังอยู่) ใช้จำสถิติสูงสุด
 
+// ---- ส่วนที่ 1: ค่าคงที่ของเกม ----------------------------------------------------
 // Kicks curl ~12 degrees toward the kicking foot's side; a 70 cm wide goal lets
 // a straight-on kick from the start spot go in with either foot.
 const GOAL = { x: 1.3, y: 0, halfWidth: 0.35, height: 0.22, depth: 0.18 };
@@ -13,6 +29,9 @@ const CELEBRATE = 2.0;          // s of heart eyes after a goal
 const FIELD_LIMIT = 3.0;        // m from the centre before a lost ball is brought back
 const BEST_KEY = 'xiaoci.bestGoals';
 
+// ---- ส่วนที่ 2: ประตู (ข้อความ XML ของ MuJoCo) ------------------------------------
+// `...${x}...` = template string: ข้อความที่แทรกค่าตัวแปรลงไปได้ด้วย ${ }
+// capsule = เสาทรงแคปซูล, box = แผ่นตาข่าย (rgba ตัวสุดท้าย 0.28 = โปร่งแสง)
 // Static goal (posts + net) added to the scene before it is compiled. The robot
 // and the ball both bump into it; the net is see-through.
 export function withGoal(xml) {
@@ -33,6 +52,7 @@ export function withGoal(xml) {
   return xml.replace('</worldbody>', `${goal}</worldbody>`);
 }
 
+// ---- ส่วนที่ 3: ตัวเกม ---------------------------------------------------------------
 export class Game {
   constructor(robot) {
     this.robot = robot;

@@ -1,3 +1,21 @@
+// =============================================================================
+// sound.js — เสียงประกอบ ที่เบราว์เซอร์ "สังเคราะห์" เอง ไม่มีไฟล์เสียงเลย
+// =============================================================================
+//
+// หลักการ: Web Audio API ของเบราว์เซอร์สร้างคลื่นเสียงได้เอง
+//   tone()  = เสียงโน้ต 1 ตัว: ความถี่ (Hz ยิ่งสูงเสียงยิ่งแหลม) นานเท่าไหร่ ดังแค่ไหน เลื่อนเสียงได้
+//   noise() = เสียงซ่า (สุ่มตัวเลข) ใช้ทำเสียงเตะ/เสียงลม
+// เสียงแต่ละแบบ (ในตาราง EFFECTS) คือการเอา tone/noise หลายๆ ตัวมาเรียงเวลากัน
+//   เช่น goal = โน้ต โด-มี-ซอล-โด (523, 659, 784, 1047 Hz) ห่างกันตัวละ 0.09 วินาที
+//
+// ไฟล์นี้แบ่งเป็น 3 ส่วน
+//   ส่วนที่ 1  audio() / tone() / noise(): เครื่องมือทำเสียงพื้นฐาน
+//   ส่วนที่ 2  EFFECTS: ตารางเสียงทั้งหมด (click, kick, goal, fall, sit, ...)   ← แต่งเสียงใหม่ตรงนี้
+//   ส่วนที่ 3  sfx: ที่ไฟล์อื่นเรียกใช้  sfx.play('goal') / sfx.toggle() ปิดเปิดเสียง (จำไว้ใน localStorage)
+//
+// ต่อกับไฟล์อื่น: app.js เรียก sfx.play(...) เมื่อมีเหตุการณ์ และปุ่ม 🔊 เรียก sfx.toggle()
+// หมายเหตุ: เบราว์เซอร์ยอมให้เว็บเล่นเสียงหลังผู้เล่นแตะ/คลิกแล้วเท่านั้น เลยสร้างตัวเล่นเสียงตอนใช้ครั้งแรก
+//
 // Tiny synthesized sound effects (Web Audio): no sound files to download.
 // Browsers only allow audio after the player touches/clicks something, so the
 // context is created lazily on the first effect.
@@ -7,6 +25,7 @@ let ctx = null;
 let muted = false;
 try { muted = localStorage.getItem(KEY) === '1'; } catch { /* storage blocked */ }
 
+// ---- ส่วนที่ 1: เครื่องมือทำเสียง ---------------------------------------------------------
 function audio() {
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -52,6 +71,7 @@ function noise(start, length, gain = 0.12, lowpass = 1200) {
   src.start(t0);
 }
 
+// ---- ส่วนที่ 2: ตารางเสียง ---- tone(ความถี่Hz, เริ่มที่วินาที, ยาวกี่วินาที, {ชนิดคลื่น, ความดัง, เลื่อนไปที่Hz})
 const EFFECTS = {
   click: () => tone(880, 0, 0.05, { type: 'triangle', gain: 0.08 }),
   kick: () => { tone(160, 0, 0.14, { slideTo: 60, gain: 0.35 }); noise(0, 0.06, 0.15, 900); },
@@ -66,6 +86,7 @@ const EFFECTS = {
   end: () => [784, 659, 523].forEach((f, i) => tone(f, i * 0.14, 0.25, { type: 'triangle', gain: 0.18 })),
 };
 
+// ---- ส่วนที่ 3: ที่ไฟล์อื่นเรียกใช้ -----------------------------------------------------
 export const sfx = {
   play(name) {
     if (!muted && EFFECTS[name]) EFFECTS[name]();

@@ -1,5 +1,34 @@
 <!doctype html>
+<!--
+============================================================================
+index.html — "โครงหน้าเว็บ" ของ 小慈 (เปิดเว็บ = เบราว์เซอร์อ่านไฟล์นี้ก่อน)
+============================================================================
+หน้าเว็บทุกหน้าประกอบด้วย 3 ภาษา:
+  HTML (ไฟล์นี้)   = "มีอะไรบนจอบ้าง"  เช่น ปุ่ม ป้าย กล่องข้อความ   เขียนเป็น <tag ...>...</tag>
+  CSS (ใน <style>) = "หน้าตาเป็นยังไง" เช่น สี ขนาด ตำแหน่ง
+  JavaScript       = "ทำงานยังไง"     อยู่ในไฟล์ app.js (โหลดที่บรรทัดสุดท้ายของไฟล์นี้)
+
+ไฟล์นี้แบ่งเป็น 3 ส่วนใหญ่
+  ส่วนที่ 1  <head>   ตั้งค่าหน้า: ชื่อแท็บ ไอคอน ภาพตอนแชร์ลิงก์ importmap และ CSS ทั้งหมดใน <style>
+  ส่วนที่ 2  <body>   ของที่เห็นบนจอ (เรียงตามลำดับในไฟล์):
+               2.1 <canvas id="view">      จอ 3D เต็มหน้าจอ (three.js วาดลงตรงนี้)
+               2.2 แถบบน                    ชื่อหุ่น ป้ายสถานะ ป้ายคะแนน ปุ่ม 🔊 ? ⛶
+               2.3 #panel                  แผงปุ่มด้านขวา (บนคอม)
+               2.4 #touch                  จอยสติ๊ก + ปุ่มท่า + ไมค์ (บนมือถือ)
+               2.5 หน้าต่างลอย (modal)       สอนเล่น / สรุปผลท้าทาย / QR Code
+               2.6 #loading                หน้าโหลดพร้อมแถบ %
+  ส่วนที่ 3  <script src="app.js">  เริ่มโปรแกรม
+
+คำที่ต้องรู้
+  id="ชื่อ"        ชื่อเฉพาะของ element 1 ตัว  JavaScript หาเจอด้วย $('ชื่อ')
+  class="ชื่อ"     กลุ่มของหน้าตา ใช้ซ้ำได้หลายตัว  CSS เขียน .ชื่อ { ... }
+  data-action="y"  ข้อมูลที่เราแปะไว้ให้ JavaScript อ่าน (ปุ่มนี้ทำท่าอะไร)
+  hidden           ซ่อนไว้ก่อน (JavaScript สั่ง el.hidden = false เพื่อโชว์)
+  lang="zh-Hant"   บอกว่าหน้านี้เป็นภาษาจีนตัวเต็ม
+แก้ข้อความบนปุ่ม: หาข้อความจีนในไฟล์นี้แล้วแก้ได้เลย (ข้อความที่เปลี่ยนตามสถานการณ์อยู่ใน app.js)
+-->
 <html lang="zh-Hant">
+<!-- ======================= ส่วนที่ 1: <head> ตั้งค่าหน้า ======================= -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -21,6 +50,7 @@
 <meta property="og:image" content="https://11243039-stack.github.io/xiaoci/assets/og.png">
 <meta property="og:url" content="https://11243039-stack.github.io/xiaoci/">
 <meta name="twitter:card" content="summary_large_image">
+<!-- importmap = "สมุดที่อยู่" บอกว่าเวลาโค้ดเขียน import ... from 'three' ให้ไปโหลดไฟล์ไหน -->
 <script type="importmap">
 {
   "imports": {
@@ -29,7 +59,16 @@
   }
 }
 </script>
+<!--
+  CSS: รูปแบบคือ  ตัวเลือก { คุณสมบัติ: ค่า; }
+    #status {...}          = element ที่ id="status"
+    .card {...}            = ทุก element ที่มี class="card"
+    #panel button {...}    = ปุ่มทุกปุ่มที่อยู่ใน #panel
+    @media (...) {...}     = ใช้เฉพาะเมื่อเงื่อนไขจริง เช่น (pointer: coarse) = อุปกรณ์จอสัมผัส
+  ลำดับในไฟล์: ตัวแปรสี → แถบบน → แผงปุ่มคอม → ปุ่มมือถือ → หน้าโหลด/หน้าต่างลอย → ปรับตามขนาดจอ (ท้ายสุด)
+-->
 <style>
+  /* ตัวแปรสี (--ชื่อ) ใช้ซ้ำทั้งไฟล์ด้วย var(--ชื่อ)  อยากเปลี่ยนสีหลักของเว็บ แก้ --blue ที่เดียว */
   :root {
     --blue: #21489a;
     --blue-dark: #142c5f;
@@ -235,8 +274,12 @@
   }
 </style>
 </head>
+<!-- ======================= ส่วนที่ 2: <body> ของที่เห็นบนจอ ======================= -->
 <body>
+<!-- 2.1 จอ 3D: three.js ใน app.js (buildScene) วาดภาพลงผืนนี้ -->
 <canvas id="view" aria-label="3D 模擬畫面"></canvas>
+
+<!-- 2.2 แถบบน: ชื่อหุ่น (ใส่จาก assets/name.txt) · ป้ายสถานะ · ป้ายคะแนน · ปุ่มเครื่องมือ -->
 
 <div id="title" class="card">
   <h1 id="robot-name">機器人</h1>
@@ -256,6 +299,8 @@
   <button id="fs-btn" title="全螢幕" aria-label="全螢幕" hidden>⛶</button>
 </div>
 
+<!-- 2.3 แผงปุ่มบนคอม: data-dir = ปุ่มทิศ (กดค้างได้), data-action = ปุ่มท่า, data-voice = ปุ่มไมค์
+     app.js ฟังก์ชัน wireControls() / wireVoice() ผูกการทำงานให้ปุ่มเหล่านี้ -->
 <!-- desktop -->
 <div id="panel" class="card">
   <div class="pad">
@@ -281,6 +326,8 @@
   </p>
 </div>
 
+<!-- 2.4 ปุ่มบนมือถือ/แท็บเล็ต: ปกติซ่อนไว้ CSS จะโชว์เมื่อเป็นจอสัมผัส (@media (pointer: coarse))
+     จอยสติ๊กทำงานด้วย wireJoystick() ใน app.js -->
 <!-- phones / tablets -->
 <div id="touch">
   <div id="joystick" aria-label="移動搖桿">
@@ -306,6 +353,7 @@
   動作模型：<a href="https://huggingface.co/pollen-robotics/microduck-policies" target="_blank" rel="noopener">Pollen Robotics microduck-policies</a>（Apache-2.0）・物理：MuJoCo・<a href="about.html">關於</a>
 </div>
 
+<!-- 2.5 หน้าต่างลอย (modal) 3 อัน: สอนเล่น / สรุปผลท้าทาย / QR Code — ซ่อนไว้ (hidden) จนกว่า app.js จะเปิด -->
 <div id="tutorial" class="modal" hidden>
   <div class="card sheet">
     <h2 id="tutorial-title">歡迎！</h2>
@@ -349,6 +397,7 @@
   </div>
 </div>
 
+<!-- 2.6 หน้าโหลด: โชว์ตั้งแต่เปิดเว็บ พอ main() ใน app.js โหลดเสร็จจะซ่อน ถ้าพังจะกลายเป็นหน้าแจ้ง error -->
 <div id="loading">
   <div class="box card">
     <h2 id="loading-title">載入中</h2>
@@ -358,6 +407,8 @@
   </div>
 </div>
 
+<!-- ======================= ส่วนที่ 3: เริ่มโปรแกรม =======================
+     type="module" = ไฟล์นี้ใช้ import/export ได้ · app.js จะ import face/game/sound/voice และไลบรารีต่อเอง -->
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,9 +1,29 @@
-// Animated face on the robot's screen: a canvas drawn every few frames and
-// shown on a plane that follows the "face" site of the model.
+// =============================================================================
+// face.js — สีหน้าที่ขยับได้บนจอหัวของ 小慈
+// =============================================================================
 //
-// Expressions: happy (◠ ◠, the default), sleepy, curious, determined, dizzy,
-// knocked-down, surprised and love (after a goal).
+// หลักการ (3 ขั้น)
+//   1. สร้าง "ผืนผ้าใบ" (canvas) ขนาด 512 พิกเซล แล้ววาดตา/แก้มลงไปด้วยคำสั่งวาดของเบราว์เซอร์ (Canvas 2D)
+//   2. เอาภาพบนผ้าใบไปทำเป็นลายบนแผ่นเรียบๆ (plane) ใน three.js
+//   3. ทุกเฟรมย้ายแผ่นนี้ไปแปะตรงจุด "face" บนหัวหุ่น (จุดนี้กำหนดไว้ในไฟล์หุ่น ตอนสร้างด้วย
+//      kid_robot/build_kid_robot.py) หน้าจึงขยับตามหัวเวลาหันหรือก้ม
+//
+// ไฟล์นี้แบ่งเป็น 4 ส่วน
+//   ส่วนที่ 1  ค่าคงที่: ขนาดจอหน้า สีตา
+//   ส่วนที่ 2  constructor: สร้างผ้าใบ + แผ่นภาพ
+//   ส่วนที่ 3  sync() / update(): แปะแผ่นตามหัว + ตัดสินใจว่าต้องวาดใหม่ไหม (20 ครั้ง/วินาที)
+//   ส่วนที่ 4  draw() และตัวช่วย: วาดสีหน้าแต่ละแบบ
+//
+// ต่อกับไฟล์อื่นยังไง
+//   app.js สร้าง new Face(...) แล้วทุกเฟรมเรียก face.sync(data) กับ face.update(dt, 'ชื่อสีหน้า', ...)
+//   ชื่อสีหน้าเลือกในฟังก์ชัน expression() ของ app.js
+//
+// สีหน้าที่มี: happy (◠◠ ค่าเริ่มต้น), sleepy, curious, determined, dizzy, down (ล้ม), surprised, love (ยิงเข้า)
+// อยากเพิ่มสีหน้าใหม่: เพิ่ม else if (e === 'ชื่อใหม่') ใน draw() แล้วไปเลือกใช้ใน expression() ของ app.js
+//
+// ใช้ไลบรารี: three.js (CanvasTexture, Mesh) + Canvas 2D ของเบราว์เซอร์ (arc, ellipse, lineTo ฯลฯ)
 
+// ---- ส่วนที่ 1: ค่าคงที่ ------------------------------------------------------
 import * as THREE from 'three';
 
 // Screen area the drawing covers, metres (the screen is 94 x 66 mm with round corners).
@@ -12,7 +32,9 @@ const PX = 512, PY = Math.round(PX * HEIGHT / WIDTH);
 const MM = PX / (WIDTH * 1000);  // canvas pixels per millimetre
 const CYAN = '#9ef2ff', PINK = 'rgba(255, 140, 170, 0.85)', HEART = '#ff5c8a';
 
+// export = อนุญาตให้ไฟล์อื่น import ไปใช้ได้ (app.js เขียน import { Face } from './face.js')
 export class Face {
+  // ---- ส่วนที่ 2: สร้างผ้าใบและแผ่นภาพ (ทำครั้งเดียว) ----------------------------
   constructor(scene, mujoco, model) {
     this.siteId = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE.value, 'face');
     this.canvas = document.createElement('canvas');
@@ -37,6 +59,7 @@ export class Face {
     this.lastDraw = -1;
   }
 
+  // ---- ส่วนที่ 3: ทุกเฟรม ----------------------------------------------------------
   // Place the plane on the screen. xpos/xmat come straight from MjData.
   sync(data) {
     if (this.siteId < 0) return;
@@ -61,6 +84,9 @@ export class Face {
     this.texture.needsUpdate = true;
   }
 
+  // ---- ส่วนที่ 4: วาด ---------------------------------------------------------------
+  // พิกัดบนผ้าใบ: (0,0) = มุมซ้ายบน, x ไปทางขวา, y ลงล่าง   MM = กี่พิกเซลต่อ 1 มิลลิเมตรบนหน้าจอหุ่น
+  // คำสั่งวาดพื้นฐาน: beginPath() เริ่มเส้นใหม่ → arc/lineTo/ellipse วาดรูป → stroke() ลากเส้น หรือ fill() ระบายทึบ
   draw() {
     const g = this.ctx, t = this.time;
     g.clearRect(0, 0, PX, PY);

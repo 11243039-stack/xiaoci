@@ -1,10 +1,30 @@
-// Voice commands: tap the microphone, say "前進" / "左轉" / "坐下" / "踢球" ...,
-// and the robot does it and answers out loud.
+// =============================================================================
+// voice.js — สั่ง 小慈 ด้วยเสียงภาษาจีน
+// =============================================================================
 //
-// Uses the browser's own speech recognition (Chrome, Edge, Safari) and speech
-// synthesis. Browsers only give a page the microphone on https or localhost,
-// so over plain http on the LAN this reports itself as unavailable.
+// ทำงานยังไง (ไม่มี AI ในไฟล์นี้)
+//   1. ฟัง:   ใช้ระบบถอดเสียงของเบราว์เซอร์ (Web Speech API, ภาษา zh-TW) → ได้ "ข้อความ"
+//             (Chrome ส่งเสียงไปถอดที่ Google, Safari ใช้ของ Apple; เว็บเราได้แค่ข้อความ)
+//   2. เข้าใจ: parseCommand() ไล่ดูว่าข้อความมีคำในตาราง COMMANDS ไหม เช่นมี「前進」→ 'forward'
+//   3. ทำ:    handle() สั่งหุ่น (ผ่าน driver / robot / game)
+//   4. ตอบ:   say() พูดตอบด้วยเสียงสังเคราะห์ของเครื่อง (speechSynthesis) เสียงสูงแบบเด็ก
+//
+// ไฟล์นี้แบ่งเป็น 3 ส่วน
+//   ส่วนที่ 1  ตารางคำสั่ง COMMANDS + เวลาที่แต่ละท่าเดินต่อ MOVE_SECONDS   ← เพิ่มคำสั่งใหม่ตรงนี้
+//   ส่วนที่ 2  parseCommand(): ข้อความ → ชื่อคำสั่ง
+//   ส่วนที่ 3  class Voice: เปิด/ปิดไมค์ (toggle), ทำตามคำสั่ง (handle), พูดตอบ (say)
+//
+// ต่อกับไฟล์อื่นยังไง
+//   app.js ฟังก์ชัน wireVoice() สร้าง new Voice({...}) ส่ง robot, driver, game ให้ และบอกว่า
+//   เวลาสถานะเปลี่ยน (onState) ให้แสดงกล่องข้อความยังไง ปุ่ม 🎤 และปุ่ม V เรียก voice.toggle()
+//
+// ข้อจำกัดของเบราว์เซอร์: ใช้ไมค์ได้เฉพาะเว็บ https หรือ localhost และในแอป LINE/Facebook ใช้ไม่ได้
+//
+// อยากเพิ่มคำสั่ง เช่น「跳舞」: ①เพิ่ม { action: 'dance', words: ['跳舞'] } ใน COMMANDS
+//                          ②เพิ่ม case 'dance': ... ใน handle() ว่าจะให้หุ่นทำอะไร และพูดตอบว่าอะไร
 
+// ---- ส่วนที่ 1: ตารางคำสั่ง -------------------------------------------------------
+// window.SpeechRecognition = ตัวถอดเสียงของเบราว์เซอร์ (Chrome/Safari ใช้ชื่อ webkitSpeechRecognition)
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 // Scanning the QR code inside LINE / Facebook / Instagram / WeChat opens their
 // own built-in browser, where speech recognition does not work.
@@ -33,12 +53,16 @@ const COMMANDS = [
 // seconds a spoken move keeps going (the robot turns ~40 degrees a second)
 const MOVE_SECONDS = { forward: 2.5, back: 2.0, left: 1.2, right: 1.2, spin: 8.5 };
 
+// ---- ส่วนที่ 2: ข้อความ → คำสั่ง ----------------------------------------------------
+// ตัดช่องว่าง/เครื่องหมายวรรคตอนออก แล้วไล่ตาราง COMMANDS จากบนลงล่าง กลุ่มแรกที่เจอคำตรงชนะ
+// (ลำดับในตารางสำคัญ: 'stop' อยู่บนสุดเพราะ「不要動」ต้องชนะคำอื่น)
 export function parseCommand(text) {
   const t = text.toLowerCase().replace(/[\s，。！？,.!?]/g, '');
   for (const c of COMMANDS) if (c.words.some((w) => t.includes(w))) return c.action;
   return null;
 }
 
+// ---- ส่วนที่ 3: ตัวฟัง/พูด ------------------------------------------------------------
 export class Voice {
   // hooks: { robot, driver, game, name, onState(state, text) } where state is
   // 'listening' | 'heard' | 'reply' | 'error' | 'idle'
