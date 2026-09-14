@@ -262,7 +262,7 @@ export class Brain {
     this.thinking = true;
     try {
       const out = await this.ask_(String(text), this.history);
-      this.remember(text, out.say);
+      this.remember(text, out);
       return out;
     } catch (err) {
       console.warn('[brain] สมองมีปัญหา:', err.message);
@@ -279,7 +279,13 @@ export class Brain {
   }
 
   // เก็บบทสนทนาไว้เท่าที่กำหนด (เก่าสุดหลุดออกไป) เพื่อให้ AI คุยต่อเนื่องได้
-  remember(userText, reply) {
+  //
+  // สำคัญ: ฝั่ง assistant ต้องเก็บเป็น "JSON เต็ม" {say,do,mood} ไม่ใช่แค่ข้อความที่พูด
+  // เพราะ AI จะเลียนแบบรูปแบบคำตอบก่อนหน้าของตัวเอง ถ้าเก็บแค่ข้อความเปล่า
+  // พอตาที่ 2 มันจะตอบเป็นข้อความเปล่า (ไม่ใช่ JSON) → sanitize หา do ไม่เจอ → หุ่นไม่ขยับ
+  // (บั๊กนี้เจอจริง 2026-09-14: ตาแรกเดินได้ ตาต่อไปพูดได้แต่ไม่ทำท่า)
+  remember(userText, out) {
+    const reply = typeof out === 'string' ? out : JSON.stringify({ say: out.say, do: out.do, mood: out.mood });
     this.history.push({ role: 'user', content: String(userText) });
     this.history.push({ role: 'assistant', content: reply });
     const max = this.historyTurns * 2;
