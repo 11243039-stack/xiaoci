@@ -200,8 +200,12 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
   }
   #voice-bubble[data-kind="listening"] { color: #e0457b; font-weight: 700; }
   #voice-bubble[data-kind="heard"] { color: var(--muted); }
+  #voice-bubble[data-kind="thinking"] { color: var(--muted); font-style: italic; }
   #voice-bubble[data-kind="reply"] { color: var(--blue-dark); font-weight: 700; }
   #voice-bubble[data-kind="error"] { color: var(--bad); }
+  #chat-form { display: flex; gap: 6px; margin-top: 8px; }
+  #chat-input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #b9dcb9; border-radius: 8px; font-size: 15px; }
+  #chat-form button { flex: 0 0 auto; padding: 8px 14px; background: #eef7ee; border-color: #b9dcb9; }
 
   #perf { position: fixed; left: 14px; bottom: 12px; font-size: 12px; color: rgba(255,255,255,.9); text-shadow: 0 1px 2px rgba(0,0,0,.4); pointer-events: none; }
   #credits { position: fixed; right: 14px; bottom: 10px; font-size: 11px; color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.4); }
@@ -320,6 +324,10 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
   </div>
   <button class="reset" data-action="reset">重新開始（跌倒時）<kbd>Backspace</kbd></button>
   <button class="voice" data-voice>🎤 語音指令<kbd>V</kbd></button>
+  <form id="chat-form" autocomplete="off">
+    <input id="chat-input" type="text" placeholder="或打字跟小慈聊天…" maxlength="200" />
+    <button type="submit">送出</button>
+  </form>
   <p class="help">
     方向鍵：按住＝持續前進／轉向，輕按＝小幅移動<br>
     Space 停止｜拖曳滑鼠旋轉視角｜滾輪縮放

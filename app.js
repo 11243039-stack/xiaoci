@@ -54,7 +54,8 @@ import * as ort from './vendor/onnxruntime-web/ort.wasm.min.mjs';
 import { Face } from './face.js';
 import { Game, withGoal } from './game.js';
 import { sfx } from './sound.js';
-import { Voice } from './voice.js';
+import { Voice, parseCommand } from './voice.js';
+import { Brain } from './brain.js';
 
 // =============================================================================
 // ส่วนที่ 2: ค่าคงที่ (const) — "ตั้งค่า" ของทั้งเกม อยากปรับอะไรเริ่มแก้ตรงนี้ได้
@@ -744,13 +745,23 @@ function wireVoice(robot, driver, game, name) {
   const bubble = $('voice-bubble');
   const buttons = document.querySelectorAll('[data-voice]');
   let hideTimer = null;
+  // "สมอง" ของหุ่น — ปกติต่อ AI จริง (LiteLLM ของ慈大 ผ่าน proxy aura-xiaoci)
+  // เปลี่ยนโหมดทดสอบได้ทาง URL: ?brain=mock (สมองปลอม) / ?brain=keywords (ตารางคำ)
+  const mode = new URLSearchParams(location.search).get('brain') || 'llm';
+  const brain = new Brain({
+    mode,
+    name,
+    endpoint: 'https://harmony-ms-cmf.com/api/xiaoci',
+    parseCommand,   // เผื่อ AI ต่อไม่ได้ ยังฟังคำสั่งพื้นฐานได้จากตารางคำ
+  });
+  const pulsing = new Set(['listening', 'heard', 'thinking']);
   const voice = new Voice({
-    robot, driver, game, name,
+    robot, driver, game, name, brain,
     onState(state, text) {
-      for (const b of buttons) b.classList.toggle('listening', state === 'listening' || state === 'heard');
+      for (const b of buttons) b.classList.toggle('listening', pulsing.has(state));
       clearTimeout(hideTimer);
       if (state === 'idle') { bubble.hidden = true; return; }
-      const label = { listening: '🎤 ', heard: '「', reply: `${name}：`, error: '⚠️ ' }[state];
+      const label = { listening: '🎤 ', heard: '「', thinking: '💭 ', reply: `${name}：`, error: '⚠️ ' }[state];
       bubble.textContent = state === 'heard' ? `${label}${text}」` : `${label}${text}`;
       bubble.dataset.kind = state;
       bubble.hidden = false;
@@ -763,8 +774,23 @@ function wireVoice(robot, driver, game, name) {
     b.addEventListener('click', () => voice.toggle());
   }
   window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;  // อย่าให้ปุ่มลัดทำงานตอนกำลังพิมพ์ในช่องแชท
     if (!e.repeat && e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.metaKey) voice.toggle();
   });
+
+  // ช่องพิมพ์คุย (สำหรับทดสอบ / เครื่องที่ใช้ไมค์ไม่ได้) — ส่งข้อความเข้าสมองเดียวกับเสียง
+  const form = $('chat-form');
+  const input = $('chat-input');
+  if (form && input) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      voice.onState('heard', text);
+      voice.handle(text);
+    });
+  }
   return voice;
 }
 
@@ -968,7 +994,7 @@ async function main() {
   wireControls(robot, driver, name);
   wireGame(game, driver);
   const voice = wireVoice(robot, driver, game, name);
-  window.__sim = { robot, driver, game, voice, mujoco, model, data };  // handy in the browser console
+  window.__sim = { robot, driver, game, voice, brain: voice.brain, mujoco, model, data };  // handy in the browser console
 
   $('loading').hidden = true;
 
@@ -989,13 +1015,17 @@ async function main() {
   // เลือกสีหน้าตามสถานการณ์ (ชื่อสีหน้าต้องมีใน face.js) อันบนสุดที่เป็นจริงชนะ
   function expression() {
     if (game.celebrating) return 'love';
-    if (voice.listening) return 'curious';
     if (robot.fallen) return 'down';
+    if (voice.thinking) return 'curious';          // กำลังรอสมองคิด
+    if (voice.listening) return 'curious';         // กำลังฟังเสียง
+    // ท่าที่กำลังทำอยู่จริงชนะสีหน้าที่ AI สั่ง (เช่นตอนตีลังกาต้องหน้าตาลาย ไม่ใช่หน้ายิ้ม)
     if (robot.policy === 'roulade') return 'dizzy';
     if (robot.behavior) return 'determined';
     if (robot.pick) return 'curious';
     if (robot.sitMode) return 'sleepy';
     if (robot.simTime - robot.pushedAt < 1.2) return 'surprised';
+    const mood = voice.activeMood();               // สีหน้าที่ AI สั่งล่าสุด (ค้าง ~4 วิ) เติมตอนยืนเฉย
+    if (mood) return mood;
     return 'happy';
   }
 

@@ -2,12 +2,16 @@
 // voice.js — สั่ง 小慈 ด้วยเสียงภาษาจีน
 // =============================================================================
 //
-// ทำงานยังไง (ไม่มี AI ในไฟล์นี้)
+// ทำงานยังไง (ไฟล์นี้ = หู + ปาก ส่วน "สมอง" ที่คิดว่าจะพูด/ทำอะไร อยู่ที่ brain.js)
 //   1. ฟัง:   ใช้ระบบถอดเสียงของเบราว์เซอร์ (Web Speech API, ภาษา zh-TW) → ได้ "ข้อความ"
 //             (Chrome ส่งเสียงไปถอดที่ Google, Safari ใช้ของ Apple; เว็บเราได้แค่ข้อความ)
-//   2. เข้าใจ: parseCommand() ไล่ดูว่าข้อความมีคำในตาราง COMMANDS ไหม เช่นมี「前進」→ 'forward'
-//   3. ทำ:    handle() สั่งหุ่น (ผ่าน driver / robot / game)
+//   2. คิด:   handle() ส่งข้อความให้ brain.ask() → ได้ { say(พูดอะไร), do(ทำท่าอะไร), mood(สีหน้า) }
+//             ยกเว้นคำสั่งฉุกเฉิน「停/重來」ทำทันทีไม่ผ่านสมอง (รอ AI คิด = ช้าเกินไป)
+//   3. ทำ:    doAction() สั่งหุ่นทีละท่า (ผ่าน driver / robot / game)
 //   4. ตอบ:   say() พูดตอบด้วยเสียงสังเคราะห์ของเครื่อง (speechSynthesis) เสียงสูงแบบเด็ก
+//
+// COMMANDS ในไฟล์นี้ยังอยู่ ใช้ 2 อย่าง: (ก) เดาว่าผู้ใช้พูดคำสั่งฉุกเฉินไหม
+// (ข) เป็นตัวสำรองให้ brain.js เวลาต่อ AI ไม่ได้ (ดู mode 'keywords' ใน brain.js)
 //
 // ไฟล์นี้แบ่งเป็น 3 ส่วน
 //   ส่วนที่ 1  ตารางคำสั่ง COMMANDS + เวลาที่แต่ละท่าเดินต่อ MOVE_SECONDS   ← เพิ่มคำสั่งใหม่ตรงนี้
@@ -64,11 +68,15 @@ export function parseCommand(text) {
 
 // ---- ส่วนที่ 3: ตัวฟัง/พูด ------------------------------------------------------------
 export class Voice {
-  // hooks: { robot, driver, game, name, onState(state, text) } where state is
-  // 'listening' | 'heard' | 'reply' | 'error' | 'idle'
+  // hooks: { robot, driver, game, name, brain, onState(state, text) } where state is
+  // 'listening' | 'heard' | 'thinking' | 'reply' | 'error' | 'idle'
   constructor(hooks) {
     Object.assign(this, hooks);
     this.listening = false;
+    this.thinking = false;                       // กำลังรอสมองคิด (app.js เอาไปทำสีหน้า)
+    this.emergency = new Set(['stop', 'reset']); // คำสั่งที่ต้องทำทันที ไม่ผ่านสมอง
+    this.mood = null;                            // สีหน้าที่สมองสั่งล่าสุด
+    this.moodUntil = 0;                          // แสดงสีหน้านั้นถึงเวลาไหน (ms)
     this.recognizer = null;
     this.muted = () => false;
   }
@@ -118,49 +126,60 @@ export class Voice {
     try { r.start(); } catch (err) { this.onState('error', String(err.message || err)); }
   }
 
-  // Do what the text asks; returns the spoken reply. Also used by tests.
-  handle(text) {
-    const action = parseCommand(text);
-    const { robot, driver, game, name } = this;
+  // ตั้งสีหน้าชั่วคราวตามอารมณ์ที่สมองบอก (app.js expression() มาอ่านผ่าน activeMood())
+  setMood(mood) { this.mood = mood; this.moodUntil = performance.now() + 4000; }
+  activeMood() { return performance.now() < this.moodUntil ? this.mood : null; }
+
+  // ทำ "ท่าเดียว" ตามชื่อที่สมองสั่ง — เฉพาะการขยับหุ่น ไม่มีคำพูด (คำพูดมาทางช่อง say)
+  // ชื่อท่าต้องตรงกับตาราง ACTIONS ใน brain.js (ที่ ready: true)
+  doAction(action) {
+    const { robot, driver, game } = this;
     const now = performance.now() / 1000;
-    const move = (dir, seconds) => {
-      driver.stop();
-      driver.until[dir] = now + seconds;
-    };
-    let reply;
+    const move = (dir, seconds) => { driver.stop(); driver.until[dir] = now + seconds; };
     switch (action) {
-      case 'forward': move('up', MOVE_SECONDS.forward); reply = '好的，前進！'; break;
-      case 'back': move('down', MOVE_SECONDS.back); reply = '後退！'; break;
-      case 'left': move('left', MOVE_SECONDS.left); reply = '向左轉！'; break;
-      case 'right': move('right', MOVE_SECONDS.right); reply = '向右轉！'; break;
-      case 'spin': move('left', MOVE_SECONDS.spin); reply = '我轉一圈給你看！'; break;
-      case 'stop': driver.stop(); reply = '好，我停下來了。'; break;
-      case 'sit':
-        if (robot.sitMode) reply = '我已經坐著了。';
-        else { driver.stop(); robot.toggleSit(); reply = '好，我坐下。'; }
-        break;
-      case 'stand':
-        if (!robot.sitMode) reply = '我站著呢！';
-        else { robot.toggleSit(); driver.busyUntil = now + 2; reply = '我站起來了！'; }
-        break;
-      case 'pick': driver.stop(); robot.triggerPick(); reply = '我來撿撿看！'; break;
-      case 'kick': {
-        const foot = robot.kickReady();
-        driver.stop();
-        robot.triggerBehavior(foot || 'kick_left');
-        reply = foot ? '看我射門！' : '球不在我腳前面，我先踢踢看！';
-        break;
-      }
-      case 'roll': driver.stop(); robot.triggerBehavior('roulade'); reply = '看我前滾翻！'; break;
-      case 'reset': robot.reset(); driver.stop(); reply = '重新開始！'; break;
-      case 'challenge': driver.stop(); game.startChallenge(); reply = '挑戰開始！六十秒，加油！'; break;
-      case 'hello': reply = `你好！我是${name}！`; break;
-      case 'who': reply = `我是${name}，一個會走路、會踢球的機器人！`; break;
-      default: reply = '我聽不懂耶……可以說「前進」、「左轉」、「坐下」或「踢球」喔！';
+      case 'forward': move('up', MOVE_SECONDS.forward); break;
+      case 'back': move('down', MOVE_SECONDS.back); break;
+      case 'left': move('left', MOVE_SECONDS.left); break;
+      case 'right': move('right', MOVE_SECONDS.right); break;
+      case 'spin': move('left', MOVE_SECONDS.spin); break;
+      case 'stop': driver.stop(); break;
+      case 'sit': if (!robot.sitMode) { driver.stop(); robot.toggleSit(); } break;
+      case 'stand': if (robot.sitMode) { robot.toggleSit(); driver.busyUntil = now + 2; } break;
+      case 'pick': driver.stop(); robot.triggerPick(); break;
+      case 'kick': { const foot = robot.kickReady(); driver.stop(); robot.triggerBehavior(foot || 'kick_left'); break; }
+      case 'roll': driver.stop(); robot.triggerBehavior('roulade'); break;
+      case 'reset': robot.reset(); driver.stop(); break;
+      case 'challenge': driver.stop(); game.startChallenge(); break;
     }
-    this.onState('reply', reply);
-    this.say(reply);
-    return { action, reply };
+  }
+
+  // รับข้อความ (จากไมค์หรือช่องพิมพ์) → ตัดสินใจ → พูด + ขยับหุ่น
+  // เป็น async เพราะสมองอาจต้องรอ AI ตอบ 1–3 วิ (หุ่นยังทรงตัว/เดินต่อได้ปกติระหว่างรอ)
+  async handle(text) {
+    // ด่านฉุกเฉิน:「停」「重來」ทำทันที ไม่ส่งไปให้สมองคิด (จะช้าเกินไปถ้าจะชนแล้วสั่งหยุด)
+    const kw = parseCommand(text);
+    if (this.emergency.has(kw)) {
+      this.doAction(kw);
+      const reply = kw === 'stop' ? '好，我停下來了。' : '重新開始！';
+      this.setMood('happy');
+      this.onState('reply', reply);
+      this.say(reply);
+      return { action: kw, reply, say: reply, do: [kw], mood: 'happy' };
+    }
+    // ถามสมอง — ระหว่างรอโชว์ว่า "กำลังคิด"
+    this.thinking = true;
+    this.onState('thinking', '嗯……');
+    let res;
+    try {
+      res = await this.brain.ask(text);
+    } finally {
+      this.thinking = false;
+    }
+    for (const a of res.do) this.doAction(a);
+    this.setMood(res.mood);
+    this.onState('reply', res.say);
+    this.say(res.say);
+    return { action: res.do[0] || null, reply: res.say, ...res };
   }
 
   say(text) {
