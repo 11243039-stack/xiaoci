@@ -351,11 +351,6 @@
         </body>
       </body>
     </body>
-    <body name="ball" pos="0.3 0 0.035">
-      <inertial pos="0 0 0" mass="0.015" diaginertia="1.225e-05 1.225e-05 1.225e-05"/>
-      <joint name="ball_free" type="free"/>
-      <geom name="ball_geom" size="0.035" friction="0.5" rgba="1 0.55 0 1"/>
-    </body>
   </worldbody>
 
   <actuator>

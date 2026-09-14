@@ -33,7 +33,7 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#21489a">
-<meta name="description" content="在瀏覽器裡操控兒童機器人：走路、轉彎、坐下、踢球、前滾翻。物理模擬，手機也能玩。">
+<meta name="description" content="在瀏覽器裡跟 AI 機器人小慈說話：牠會走路、轉彎、坐下、做動作，還能用中文跟你聊天。物理模擬，手機也能玩。">
 <title>機器人模擬</title>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -46,7 +46,7 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
 <!-- link previews; tools/build_site.py --base-url=... makes these absolute -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="小慈・機器人模擬">
-<meta property="og:description" content="在瀏覽器裡操控兒童機器人小慈：走路、踢球射門、前滾翻。手機也能玩！">
+<meta property="og:description" content="跟 AI 機器人小慈說話：牠會走路、做動作，還能用中文跟你聊天。手機也能玩！">
 <meta property="og:image" content="https://11243039-stack.github.io/xiaoci/assets/og.png">
 <meta property="og:url" content="https://11243039-stack.github.io/xiaoci/">
 <meta name="twitter:card" content="summary_large_image">
@@ -291,12 +291,6 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
   <button id="phone-btn" hidden>📱 用手機玩</button>
 </div>
 <div id="status" class="card" data-kind="ok">載入中…</div>
-<div id="score" class="card">
-  <span class="goals">⚽ 進球 <b id="score-num">0</b></span>
-  <span id="timer" hidden>⏱ <b id="timer-num">60</b></span>
-  <span class="best">🏆 <b id="best-num">0</b></span>
-  <button id="challenge-btn">▶ 挑戰 60 秒</button>
-</div>
 <div id="tools">
   <button id="mute-btn" title="關閉音效" aria-label="音效">🔊</button>
   <button id="help-btn" title="玩法說明" aria-label="玩法說明">?</button>
@@ -316,9 +310,6 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
   </div>
   <div class="moves">
     <button data-action="y">坐下／站起<kbd>Y</kbd></button>
-    <button data-action="g">低頭撿東西<kbd>G</kbd></button>
-    <button data-action="k">左腳踢球<kbd>K</kbd></button>
-    <button data-action="l">右腳踢球<kbd>L</kbd></button>
     <button data-action="r">前滾翻<kbd>R</kbd></button>
     <button data-action="p"><span class="push-label">推一下</span><kbd>P</kbd></button>
   </div>
@@ -344,9 +335,6 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
   </div>
   <div id="touch-actions">
     <button data-action="y">坐下／站起</button>
-    <button data-action="g">撿東西</button>
-    <button data-action="k">左腳踢球</button>
-    <button data-action="l">右腳踢球</button>
     <button data-action="r">前滾翻</button>
     <button data-action="p" class="push-label">推一下</button>
     <button class="reset" data-action="reset">↺ 重新開始</button>
@@ -369,29 +357,17 @@ index.html — "โครงหน้าเว็บ" ของ 小慈 (เป�
       <li><span class="icon">🕹️</span>
         <span class="only-touch"><b>移動</b>：用左下角的搖桿，往上推前進、往左右推轉彎。</span>
         <span class="only-desk"><b>移動</b>：鍵盤方向鍵。按住＝一直走，輕按＝走一小步。</span></li>
-      <li><span class="icon">⚽</span>
-        <span class="only-touch"><b>動作</b>：右下角的按鈕：坐下、撿東西、踢球、前滾翻。</span>
-        <span class="only-desk"><b>動作</b>：點右邊的按鈕，或按 Y、G、K、L、R。</span></li>
+      <li><span class="icon">🤸</span>
+        <span class="only-touch"><b>動作</b>：右下角的按鈕：坐下／站起、前滾翻。</span>
+        <span class="only-desk"><b>動作</b>：點右邊的按鈕，或按 Y（坐下）、R（前滾翻）。</span></li>
       <li><span class="icon">👀</span>
         <span class="only-touch"><b>視角</b>：一指拖曳畫面旋轉，兩指縮放。</span>
         <span class="only-desk"><b>視角</b>：拖曳滑鼠旋轉，滾輪縮放。</span></li>
-      <li><span class="icon">🥅</span><span><b>射門</b>：走到球旁邊，球在腳前面時按「踢球」，把球踢進球門！按「▶ 挑戰 60 秒」比比看能進幾球。</span></li>
-      <li><span class="icon">🎤</span><span><b>語音</b>：點麥克風，說「前進」、「左轉」、「坐下」、「踢球」或「你好」。<span class="only-desk">也可以按 V。</span>（需要 https 網址）</span></li>
+      <li><span class="icon">💬</span><span><b>跟小慈聊天</b>：點麥克風用中文說話，或在下面的框框打字。牠聽得懂日常說法，會回答你、走過來、坐下、表演等等。<span class="only-desk">也可以按 V。</span>（語音需要 https 網址）</span></li>
       <li><span class="icon">↺</span><span><b>跌倒了？</b>按「重新開始」<span class="only-desk">或 Backspace</span>。</span></li>
     </ul>
     <button id="tutorial-go" class="primary">開始玩！</button>
     <p class="note"><a href="about.html">關於這個網站・授權與致謝</a></p>
-  </div>
-</div>
-
-<div id="result" class="modal" hidden>
-  <div class="card sheet">
-    <h2>時間到！</h2>
-    <p class="big">這次進了 <b id="result-score">0</b> 球</p>
-    <p id="result-record" class="record" hidden>🏆 新紀錄！</p>
-    <p class="note">最佳紀錄：<b id="result-best">0</b> 球</p>
-    <button id="again-btn" class="primary">再挑戰一次</button>
-    <button id="free-btn">自由玩</button>
   </div>
 </div>
 

@@ -52,7 +52,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from './vendor/mujoco/mujoco.js';
 import * as ort from './vendor/onnxruntime-web/ort.wasm.min.mjs';
 import { Face } from './face.js';
-import { Game, withGoal } from './game.js';
+import { Game } from './game.js';
 import { sfx } from './sound.js';
 import { Voice, parseCommand } from './voice.js';
 import { Brain } from './brain.js';
@@ -503,23 +503,43 @@ class Driver {
 // ============================================================================
 
 // ลายตารางหมากรุกของพื้น: วาดลงผืนผ้าใบ 256×256 แล้วเอาไปปูซ้ำๆ
-function checkerTexture() {
+// พื้นหญ้า: เขียวพื้น + จุดสีเขียวอ่อน/เข้มสุ่มๆ ให้ดูเป็นสนามหญ้าจริง ไม่แบนเรียบ
+function grassTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const g = c.getContext('2d');
-  const a = '#335066', b = '#1c3348';
-  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
-    g.fillStyle = (i + j) % 2 ? a : b;
-    g.fillRect(i * 128, j * 128, 128, 128);
+  g.fillStyle = '#5f9e4a';                      // สีหญ้าพื้น
+  g.fillRect(0, 0, 256, 256);
+  const speckles = ['rgba(112,176,82,0.55)', 'rgba(74,132,58,0.55)', 'rgba(142,196,112,0.45)'];
+  for (let i = 0; i < 2800; i++) {
+    g.fillStyle = speckles[Math.floor(Math.random() * speckles.length)];
+    const s = 1 + Math.random() * 2.5;
+    g.fillRect(Math.random() * 256, Math.random() * 256, s, s);
   }
-  g.strokeStyle = 'rgba(210,225,240,0.55)';
-  g.lineWidth = 3;
-  g.strokeRect(0, 0, 256, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   return tex;
+}
+
+// ต้นไม้ง่ายๆ: ลำต้นสูง (ทรงกระบอกสีน้ำตาล) + พุ่มใบซ้อนกันเป็นทรงกรวย — ภาพล้วน หุ่นเดินทะลุได้
+function makeTree(x, y, scale, trunkMat, leafMat) {
+  const g = new THREE.Group();
+  const h = 0.85 * scale;                                          // ลำต้นสูง ให้พุ่มใบลอยชัด ไม่เหมือนเนิน
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.04 * scale, 0.06 * scale, h, 8), trunkMat);
+  trunk.rotation.x = Math.PI / 2; trunk.position.z = h / 2;         // ฉากนี้แกน z ชี้ขึ้น
+  trunk.castShadow = true;
+  g.add(trunk);
+  // พุ่มใบ 3 ชั้น ใหญ่→เล็ก ไล่ขึ้นบน = ทรงต้นไม้
+  for (const [dz, r] of [[-0.02, 0.30], [0.20, 0.24], [0.38, 0.16]]) {
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(r * scale, 12, 10), leafMat);
+    leaf.position.set(0, 0, h + dz * scale);
+    leaf.castShadow = true;
+    g.add(leaf);
+  }
+  g.position.set(x, y, 0);   // ปล่อยให้ three.js อัปเดตเมทริกซ์เอง (ของตกแต่งไม่กี่ชิ้น)
+  return g;
 }
 
 function buildScene(mujoco, model, canvas) {
@@ -530,8 +550,9 @@ function buildScene(mujoco, model, canvas) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#8fb3d9');
-  scene.fog = new THREE.Fog('#8fb3d9', 2.5, 7);
+  // ท้องฟ้ากลางแจ้ง: หมอกจางๆ ให้ขอบพื้นกลืนไปกับฟ้า (โดมฟ้าไล่สีเพิ่มด้านล่าง)
+  scene.background = new THREE.Color('#dcecf7');
+  scene.fog = new THREE.Fog('#dcecf7', 6, 18);
 
   const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 50);
   camera.up.set(0, 0, 1);  // MuJoCo is z-up
@@ -547,6 +568,46 @@ function buildScene(mujoco, model, canvas) {
   sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { left: -0.6, right: 0.6, top: 0.6, bottom: -0.6, near: 0.1, far: 5 });
   scene.add(sun, sun.target);
+
+  // ---- โดมท้องฟ้าไล่สี (ฟ้าเข้มด้านบน → ขาวจางที่ขอบฟ้า) ----
+  {
+    const cv = document.createElement('canvas');
+    cv.width = 2; cv.height = 256;
+    const g = cv.getContext('2d');
+    const grd = g.createLinearGradient(0, 0, 0, 256);
+    grd.addColorStop(0, '#3f86d8');    // กลางฟ้า (zenith)
+    grd.addColorStop(0.55, '#8fc0ec');
+    grd.addColorStop(1, '#e7f2fb');    // ขอบฟ้า
+    g.fillStyle = grd; g.fillRect(0, 0, 2, 256);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(30, 32, 16),
+      new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }),
+    );
+    sky.rotation.x = Math.PI / 2;      // ย้ายขั้วโดมจากแกน y ไปแกน z (ฉากนี้ z ชี้ขึ้น)
+    sky.matrixAutoUpdate = false; sky.updateMatrix();
+    scene.add(sky);
+  }
+
+  // ---- ต้นไม้ + พุ่มไม้รอบๆ ให้เป็นสวน (ภาพล้วน ไม่มีฟิสิกส์ วางไว้รอบพื้นที่เดิน) ----
+  {
+    const trunkMat = new THREE.MeshStandardMaterial({ color: '#7a5230', roughness: 0.9 });
+    const leafMat = new THREE.MeshStandardMaterial({ color: '#4c9a3f', roughness: 0.8 });
+    const leafMat2 = new THREE.MeshStandardMaterial({ color: '#6cb84f', roughness: 0.8 });
+    // ต้นไม้วางเป็นวงรอบ รัศมี 5–8 ม. เป็นฉากหลัง (พื้นที่เดินของหุ่นอยู่ตรงกลาง โล่งๆ)
+    const trees = [[5.2, 2.0, 1.2], [-5.0, 3.4, 1.0], [-4.2, -5.0, 1.3], [5.8, -3.2, 1.1],
+      [0.6, 6.8, 1.2], [-7.0, -1.2, 1.1], [7.2, 4.8, 1.0], [-2.2, -7.2, 1.15],
+      [3.2, -6.4, 1.05], [-6.2, 5.2, 1.0]];
+    for (const [x, y, s] of trees) scene.add(makeTree(x, y, s, trunkMat, (Math.round(x) + Math.round(y)) % 2 ? leafMat : leafMat2));
+    // พุ่มไม้เตี้ยๆ วางห่างหุ่นหน่อย (รัศมี ~2.5–3.5 ม.)
+    for (const [x, y, r] of [[2.8, -2.4, 0.17], [-3.0, 2.2, 0.19], [3.2, 2.8, 0.15], [-2.6, -3.0, 0.16]]) {
+      const bush = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), leafMat2);
+      bush.position.set(x, y, r * 0.7);
+      bush.castShadow = true;
+      scene.add(bush);
+    }
+  }
 
   // ---- สร้างภาพให้ทุกชิ้นส่วน: ดูชนิดของชิ้น (ทรงกลม กล่อง แคปซูล mesh ฯลฯ) แล้วสร้างรูปทรงแบบเดียวกัน ----
   const T = mujoco.mjtGeom;
@@ -589,7 +650,7 @@ function buildScene(mujoco, model, canvas) {
     const color = new THREE.Color().setRGB(rgba[0], rgba[1], rgba[2], THREE.SRGBColorSpace);
     const seeThrough = rgba[3] < 1;
     const material = t === T.mjGEOM_PLANE.value
-      ? new THREE.MeshStandardMaterial({ map: (() => { const tx = checkerTexture(); tx.repeat.set(40, 40); return tx; })(), roughness: 0.85 })
+      ? new THREE.MeshStandardMaterial({ map: (() => { const tx = grassTexture(); tx.repeat.set(48, 48); return tx; })(), roughness: 0.95, metalness: 0 })
       : new THREE.MeshStandardMaterial({
         color, roughness: 0.45, metalness: 0.05,
         emissive: color.clone().multiplyScalar(m >= 0 ? matEmission[m] : 0),
@@ -720,20 +781,8 @@ function statusText(robot, driver, name, game) {
   return [parts.length ? parts.join(' + ') : '站著待命', 'ok'];
 }
 
-// Score card, 60-second challenge, results card, and the sound on/off button.
-function wireGame(game, driver) {
-  $('challenge-btn').addEventListener('click', () => {
-    driver.stop();
-    game.startChallenge();
-    sfx.play('start');
-  });
-  $('again-btn').addEventListener('click', () => {
-    $('result').hidden = true;
-    driver.stop();
-    game.startChallenge();
-    sfx.play('start');
-  });
-  $('free-btn').addEventListener('click', () => { $('result').hidden = true; });
+// ปุ่มเปิด/ปิดเสียง (โหมดเกม บอล/ประตู/คะแนน ถูกถอดออกแล้ว เหลือฉากสวนให้เดินเล่น)
+function wireSound() {
   const mute = $('mute-btn');
   const showMute = () => { mute.textContent = sfx.muted ? '🔇' : '🔊'; mute.title = sfx.muted ? '開啟音效' : '關閉音效'; };
   mute.addEventListener('click', () => { sfx.toggle(); showMute(); });
@@ -794,31 +843,11 @@ function wireVoice(robot, driver, game, name) {
   return voice;
 }
 
-function showScore(game) {
-  $('score-num').textContent = game.score;
-  const left = game.timeLeft;
-  $('timer').hidden = left === null;
-  $('challenge-btn').hidden = left !== null;
-  if (left !== null) $('timer-num').textContent = Math.ceil(left);
-  $('best-num').textContent = game.best;
-}
-
-function showResult(game) {
-  const { score, record } = game.lastResult;
-  $('result-score').textContent = score;
-  $('result-best').textContent = game.best;
-  $('result-record').hidden = !record;
-  $('result').hidden = false;
-}
-
 // ผูกปุ่มทั้งหมด: actions คือตาราง "ชื่อการกระทำ → ฟังก์ชัน" ปุ่มในหน้าเว็บใช้ data-action="y" ฯลฯ
 // อยากเพิ่มปุ่มใหม่: ①เพิ่มบรรทัดใน actions ②เพิ่ม <button data-action="ชื่อ"> ใน index.html
 function wireControls(robot, driver, name) {
   const actions = {
     y: () => robot.toggleSit(),
-    g: () => robot.triggerPick(),
-    k: () => robot.triggerBehavior('kick_left'),
-    l: () => robot.triggerBehavior('kick_right'),
     r: () => robot.triggerBehavior('roulade'),
     p: () => robot.push(),
     reset: () => { robot.reset(); driver.stop(); },
@@ -827,8 +856,12 @@ function wireControls(robot, driver, name) {
   for (const el of document.querySelectorAll('.push-label')) el.textContent = `推一下${name}`;
 
   // Keyboard: arrows hold-to-move; letters trigger moves.
+  // ข้ามทั้งหมดถ้ากำลังพิมพ์ในช่องข้อความ (ไม่งั้น Backspace ไปสั่งรีเซ็ต ตัวอักษรไปสั่งท่า
+  //  จนลบข้อความไม่ได้และหุ่นกระตุก) — ให้ช่องแชททำงานตามปกติของมัน
+  const typing = (e) => e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
   const keyDir = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   window.addEventListener('keydown', (e) => {
+    if (typing(e)) return;
     if (keyDir[e.key]) { e.preventDefault(); if (!e.repeat) driver.press(keyDir[e.key]); return; }
     if (e.repeat) return;
     if (e.key === ' ') { e.preventDefault(); actions.stop(); return; }
@@ -982,7 +1015,7 @@ async function main() {
 
   setLoading('建立場景…');
   // The policies run at 50 Hz on a 5 ms physics step, as in infer_policy.py.
-  const xml = withGoal((await xmlText).replace(/<mujoco([^>]*)>/, `<mujoco$1>\n  <option timestep="${TIMESTEP}"/>`));
+  const xml = (await xmlText).replace(/<mujoco([^>]*)>/, `<mujoco$1>\n  <option timestep="${TIMESTEP}"/>`);
   // ประกอบทุกชิ้นส่วนเข้าด้วยกัน (แต่ละตัวมาจากส่วนที่ 4–7 และไฟล์ face/game/voice)
   const model = mujoco.MjModel.from_xml_string(xml);
   const data = new mujoco.MjData(model);
@@ -992,7 +1025,7 @@ async function main() {
   const view = buildScene(mujoco, model, $('view'));
   const face = new Face(view.scene, mujoco, model);
   wireControls(robot, driver, name);
-  wireGame(game, driver);
+  wireSound();
   const voice = wireVoice(robot, driver, game, name);
   window.__sim = { robot, driver, game, voice, brain: voice.brain, mujoco, model, data };  // handy in the browser console
 
@@ -1004,10 +1037,6 @@ async function main() {
   let wasFallen = false;
   function react() {
     for (const e of robot.events.splice(0)) if (SOUND_OF[e]) sfx.play(SOUND_OF[e]);
-    for (const e of game.events.splice(0)) {
-      if (SOUND_OF[e]) sfx.play(SOUND_OF[e]);
-      if (e === 'challenge-end') { sfx.play('end'); driver.stop(); showResult(game); }
-    }
     const fallen = robot.fallen;
     if (fallen && !wasFallen) sfx.play('fall');
     wasFallen = fallen;
@@ -1076,7 +1105,6 @@ async function main() {
     const st = $('status');
     if (st.textContent !== text) st.textContent = text;
     st.dataset.kind = kind;
-    showScore(game);
     frames++;
     if (now - fpsClock > 1000) {
       const fps = frames * 1000 / (now - fpsClock);

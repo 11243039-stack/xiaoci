@@ -44,12 +44,9 @@ const COMMANDS = [
   { action: 'left', words: ['向左轉', '往左轉', '左轉', '向左', '往左', '左边', '左邊', '左转', 'left'] },
   { action: 'right', words: ['向右轉', '往右轉', '右轉', '向右', '往右', '右边', '右邊', '右转', 'right'] },
   { action: 'back', words: ['往後退', '向後退', '後退', '往後', '倒退', '后退', '往后', 'back'] },
-  { action: 'kick', words: ['射門', '踢球', '射门', '踢', 'kick'] },
-  { action: 'pick', words: ['撿東西', '撿起來', '低頭', '撿', '捡东西', '捡'] },
   { action: 'roll', words: ['前滾翻', '翻跟斗', '翻滾', '前滚翻', '翻滚', '翻'] },
   { action: 'forward', words: ['往前走', '向前走', '前進', '往前', '向前', '前进', '走', 'forward'] },
   { action: 'reset', words: ['重新開始', '重來', '重新开始', '重来'] },
-  { action: 'challenge', words: ['開始挑戰', '挑戰', '比賽', '开始挑战', '挑战', '比赛'] },
   { action: 'hello', words: ['你好', '哈囉', '嗨', '您好', 'hello'] },
   { action: 'who', words: ['你是誰', '你叫什麼', '名字', '你是谁', '你叫什么'] },
 ];
@@ -133,7 +130,7 @@ export class Voice {
   // ทำ "ท่าเดียว" ตามชื่อที่สมองสั่ง — เฉพาะการขยับหุ่น ไม่มีคำพูด (คำพูดมาทางช่อง say)
   // ชื่อท่าต้องตรงกับตาราง ACTIONS ใน brain.js (ที่ ready: true)
   doAction(action) {
-    const { robot, driver, game } = this;
+    const { robot, driver } = this;
     const now = performance.now() / 1000;
     const move = (dir, seconds) => { driver.stop(); driver.until[dir] = now + seconds; };
     switch (action) {
@@ -145,11 +142,8 @@ export class Voice {
       case 'stop': driver.stop(); break;
       case 'sit': if (!robot.sitMode) { driver.stop(); robot.toggleSit(); } break;
       case 'stand': if (robot.sitMode) { robot.toggleSit(); driver.busyUntil = now + 2; } break;
-      case 'pick': driver.stop(); robot.triggerPick(); break;
-      case 'kick': { const foot = robot.kickReady(); driver.stop(); robot.triggerBehavior(foot || 'kick_left'); break; }
       case 'roll': driver.stop(); robot.triggerBehavior('roulade'); break;
       case 'reset': robot.reset(); driver.stop(); break;
-      case 'challenge': driver.stop(); game.startChallenge(); break;
     }
   }
 
@@ -175,11 +169,24 @@ export class Voice {
     } finally {
       this.thinking = false;
     }
-    for (const a of res.do) this.doAction(a);
+    // พูดตอบก่อนเสมอ (ไม่ให้เงียบระหว่างลุก) แล้วค่อยลงมือทำท่า
     this.setMood(res.mood);
     this.onState('reply', res.say);
     this.say(res.say);
+    await this.runActions(res.do);
     return { action: res.do[0] || null, reply: res.say, ...res };
+  }
+
+  // ทำท่าทั้งหมดที่สมองสั่ง — ถ้ากำลังนั่งอยู่แล้วมีท่าที่ต้องยืน (เตะ/ตีลังกา/เก็บของ)
+  // ให้ลุกขึ้นก่อนแล้วรอจนยืนมั่นคง ค่อยทำ (ไม่งั้นหุ่นรับปากแต่ไม่ขยับเพราะนั่งอยู่)
+  async runActions(list) {
+    const NEEDS_STANDING = new Set(['roll']);
+    if (this.robot.sitMode && list.some((a) => NEEDS_STANDING.has(a))) {
+      this.robot.toggleSit();                                  // ลุกขึ้น
+      this.driver.busyUntil = performance.now() / 1000 + 2;    // กันสั่งเดินระหว่างลุก
+      await new Promise((r) => setTimeout(r, 2100));           // รอลุกให้เสร็จ (~2 วิ)
+    }
+    for (const a of list) this.doAction(a);
   }
 
   say(text) {

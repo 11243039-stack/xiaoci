@@ -50,11 +50,8 @@ export const ACTIONS = [
   { name: 'stop',      ready: true,  desc: '停下來不動' },
   { name: 'sit',       ready: true,  desc: '坐下' },
   { name: 'stand',     ready: true,  desc: '站起來' },
-  { name: 'pick',      ready: true,  desc: '低頭撿地上的東西' },
-  { name: 'kick',      ready: true,  desc: '踢球' },
   { name: 'roll',      ready: true,  desc: '前滾翻（很厲害的特技）' },
   { name: 'reset',     ready: true,  desc: '回到起點重新開始' },
-  { name: 'challenge', ready: true,  desc: '開始六十秒射門挑戰' },
   // ท่าหลายขั้นตอน — ยังไม่ได้เขียน (เฟส A ขั้นถัดไป ดู docs/INTEGRATION.md หัวข้อ 4)
   { name: 'come',      ready: false, desc: '走到說話的人面前' },
   { name: 'fetch',     ready: false, desc: '去撿東西再帶回來' },
@@ -165,9 +162,7 @@ const MOCK_SCRIPT = [
   { words: ['過來', '來這裡', '到我這'], say: '好，我走過去！', do: ['forward'], mood: 'happy' },
   { words: ['你會什麼', '會做什麼', '厲害'], say: '我會走路、踢球，還會前滾翻喔！', do: [], mood: 'determined' },
   { words: ['表演', '特技', '翻'], say: '看我前滾翻！', do: ['roll'], mood: 'determined' },
-  { words: ['踢球', '射門'], say: '看我射門！', do: ['kick'], mood: 'determined' },
   { words: ['累', '休息', '坐'], say: '好，我坐下休息一下。', do: ['sit'], mood: 'sleepy' },
-  { words: ['撿', '幫我拿'], say: '我來撿撿看！', do: ['pick'], mood: 'curious' },
   { words: ['謝謝', '感謝'], say: '不客氣！', do: [], mood: 'love' },
   { words: ['再見', '掰掰'], say: '掰掰！下次再來玩！', do: [], mood: 'happy' },
 ];
