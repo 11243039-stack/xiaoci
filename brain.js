@@ -30,6 +30,7 @@
 //   voice.js  สร้าง new Brain({...}) แล้วเรียก brain.ask(ข้อความ)
 //   face.js   รับค่า mood ไปวาดสีหน้า (ชื่อสีหน้าต้องตรงกับที่ face.js รู้จัก)
 //   app.js    รับค่า do ไปสั่งหุ่นผ่าน handle() ของ voice.js
+//   corpus.js (ถ้าเปิดใช้) ค้นเอกสารจริงของ慈濟มาแปะกับคำถาม ก่อนส่งให้ AI — ดูส่วนที่ 4.3
 //
 // ไม่ใช้ไลบรารีอะไรเลย และไม่เรียกใช้ของเบราว์เซอร์ (window, document) แม้แต่ตัวเดียว
 // → ทดสอบด้วย node ได้ตรงๆ ไม่ต้องเปิดเบราว์เซอร์ (ดู tools/test_brain.mjs)
@@ -198,10 +199,22 @@ function keywordBrain(parseCommand, name) {
 //
 // ⚠️ ห้ามใส่รหัส API (key) ลงในไฟล์นี้เด็ดขาด — เว็บเราเปิดให้ทุกคนกด View Source ดูได้
 //    รหัสต้องอยู่ที่ server เท่านั้น (เหตุผลเต็มๆ ใน docs/INTEGRATION.md หัวข้อ 8)
-function llmBrain({ endpoint, timeoutMs = 12000, name }) {
+//
+// corpus (ถ้าใส่มา) = ฟังก์ชันค้นคลังเอกสารจริงของ慈濟 จาก corpus.js
+//   ถามเรื่อง慈濟 → แปะข้อความจากเอกสารจริงไปกับคำถาม เพื่อไม่ให้ AI แต่งเรื่องเอง
+//   ถามเรื่องอื่น / ค้นไม่ได้ → คืนค่าว่าง แล้วถาม AI ตามปกติ (ไม่มีก็คุยได้)
+function llmBrain({ endpoint, timeoutMs = 12000, name, corpus = null }) {
   const system = systemPrompt(name);
   return async function ask(text, history = []) {
     if (!endpoint) throw new Error('ยังไม่ได้ตั้งค่า endpoint ของ AI');
+    // ค้นคลังก่อน (ไม่เกิน 3 วิ มีตัวจับเวลาของตัวเอง) แล้วค่อยเริ่มนับเวลาของ AI
+    const reference = corpus ? await corpus(text) : '';
+    const sources = reference
+      ? [{ role: 'system', content: `以下是慈濟資料庫查到的原文，回答時以這些內容為準，不要自己編造；
+如果原文沒提到，就說不知道。回答仍然只用 JSON 格式。
+
+${reference}` }]
+      : [];
     // AbortController = "ถ้าเกินเวลานี้ให้ยกเลิก" กันกรณี server ไม่ตอบแล้วหุ่นค้างตลอดกาล
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), timeoutMs);
@@ -212,7 +225,7 @@ function llmBrain({ endpoint, timeoutMs = 12000, name }) {
         signal: abort.signal,
         // ▼▼▼ ตรงนี้ต้องแก้ตามรูปแบบของรุ่นพี่ ▼▼▼
         body: JSON.stringify({
-          messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: text }],
+          messages: [{ role: 'system', content: system }, ...history, ...sources, { role: 'user', content: text }],
         }),
       });
       if (!res.ok) throw new Error(`AI ตอบกลับมาเป็น error ${res.status}`);
@@ -230,11 +243,12 @@ function llmBrain({ endpoint, timeoutMs = 12000, name }) {
 
 // ---- ส่วนที่ 5: ตัวห่อ — เลือกโหมด + จำบทสนทนา ------------------------------------
 export class Brain {
-  // ตัวเลือก: { mode, name, endpoint, parseCommand, mockDelayMs, historyTurns }
+  // ตัวเลือก: { mode, name, endpoint, corpus, parseCommand, mockDelayMs, historyTurns }
   constructor(opts = {}) {
     this.mode = opts.mode || 'mock';
     this.name = opts.name || '小慈';
     this.endpoint = opts.endpoint || null;
+    this.corpus = opts.corpus || null;   // ค้นคลัง慈濟ก่อนตอบ (ไม่ใส่ก็ได้ — โหมด llm เท่านั้นที่ใช้)
     this.parseCommand = opts.parseCommand || null;  // ตัวสำรองเวลา AI ต่อไม่ได้
     this.historyTurns = opts.historyTurns ?? 6;  // จำย้อนหลังกี่ตา (มากไปเปลืองเงิน+ช้า)
     this.history = [];
@@ -242,7 +256,7 @@ export class Brain {
     this._impl = {
       mock: () => mockBrain(opts.mockDelayMs ?? 800),
       keywords: () => keywordBrain(opts.parseCommand, this.name),
-      llm: () => llmBrain({ endpoint: this.endpoint, name: this.name }),
+      llm: () => llmBrain({ endpoint: this.endpoint, name: this.name, corpus: this.corpus }),
     }[this.mode];
     if (!this._impl) throw new Error(`ไม่รู้จักโหมดสมอง '${this.mode}'`);
     this.ask_ = this._impl();

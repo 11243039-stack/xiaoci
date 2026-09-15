@@ -56,6 +56,7 @@ import { Game } from './game.js';
 import { sfx } from './sound.js';
 import { Voice, parseCommand } from './voice.js';
 import { Brain } from './brain.js';
+import { makeCorpus } from './corpus.js';
 
 // =============================================================================
 // ส่วนที่ 2: ค่าคงที่ (const) — "ตั้งค่า" ของทั้งเกม อยากปรับอะไรเริ่มแก้ตรงนี้ได้
@@ -797,10 +798,16 @@ function wireVoice(robot, driver, game, name) {
   // "สมอง" ของหุ่น — ปกติต่อ AI จริง (LiteLLM ของ慈大 ผ่าน proxy aura-xiaoci)
   // เปลี่ยนโหมดทดสอบได้ทาง URL: ?brain=mock (สมองปลอม) / ?brain=keywords (ตารางคำ)
   const mode = new URLSearchParams(location.search).get('brain') || 'llm';
+  // ค้นคลังเอกสารจริงของ慈濟ก่อนตอบ (?corpus=off = ปิด ไว้เทียบว่าต่างกันแค่ไหน)
+  // ยิงไป https://harmony-ms-cmf.com/api/kb ของรุ่นพี่ตรงๆ ไม่ต้องมีรหัส
+  // แต่เขาอนุญาตเฉพาะเว็บที่ขึ้นจริง (11243039-stack.github.io) เปิดจาก localhost จะได้ 403
+  // → ตอนพัฒนาในเครื่อง หุ่นจะคุยได้ตามปกติ แค่ไม่มีเอกสารอ้างอิง (ดู console)
+  const useCorpus = new URLSearchParams(location.search).get('corpus') !== 'off';
   const brain = new Brain({
     mode,
     name,
     endpoint: 'https://harmony-ms-cmf.com/api/xiaoci',
+    corpus: useCorpus ? makeCorpus() : null,
     parseCommand,   // เผื่อ AI ต่อไม่ได้ ยังฟังคำสั่งพื้นฐานได้จากตารางคำ
   });
   const pulsing = new Set(['listening', 'heard', 'thinking']);
