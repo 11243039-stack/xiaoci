@@ -23,6 +23,7 @@
 //   เวลาสถานะเปลี่ยน (onState) ให้แสดงกล่องข้อความยังไง ปุ่ม 🎤 และปุ่ม V เรียก voice.toggle()
 //
 // ข้อจำกัดของเบราว์เซอร์: ใช้ไมค์ได้เฉพาะเว็บ https หรือ localhost และในแอป LINE/Facebook ใช้ไม่ได้
+// และบน iPhone เสียงพูดต้องถูก "ปลดล็อก" ตอนนิ้วแตะจอก่อน ไม่งั้นเงียบสนิท (ดู unlockSpeech)
 //
 // อยากเพิ่มคำสั่ง เช่น「跳舞」: ①เพิ่ม { action: 'dance', words: ['跳舞'] } ใน COMMANDS
 //                          ②เพิ่ม case 'dance': ... ใน handle() ว่าจะให้หุ่นทำอะไร และพูดตอบว่าอะไร
@@ -76,6 +77,29 @@ export class Voice {
     this.moodUntil = 0;                          // แสดงสีหน้านั้นถึงเวลาไหน (ms)
     this.recognizer = null;
     this.muted = () => false;
+    this.speechUnlocked = false;   // ดู unlockSpeech()
+  }
+
+  // ปลดล็อกเสียงพูดของ iPhone — ต้องเรียกตอน "นิ้วแตะจอ" เท่านั้น
+  //
+  // ปัญหาที่เจอจริงบน iPhone + Safari (2026-09-15): กดไมค์ พูดใส่ ข้อความขึ้นจอครบ
+  // เสียงเอฟเฟกต์ก็ดัง แต่หุ่นไม่พูดสักคำ และไม่มี error อะไรเลย
+  //
+  // สาเหตุ: iOS ยอมให้ speechSynthesis.speak() ออกเสียง ก็ต่อเมื่อเคยถูกเรียก
+  // "ระหว่างที่นิ้วแตะจอ" มาก่อนอย่างน้อยหนึ่งครั้ง แต่ของเราหุ่นพูดตอนคิดเสร็จ
+  // ซึ่งช้ากว่าการแตะปุ่มไป 2-8 วินาที (ยิ่งมีค้นคลังยิ่งนาน) → เลยจังหวะนั้นไปแล้ว
+  // iOS จึงกลืนคำสั่งเงียบๆ ไม่ฟ้องอะไร (คอมไม่เจอ เพราะ Chrome/Edge ไม่มีข้อจำกัดนี้)
+  //
+  // วิธีแก้: ตอนแตะปุ่ม ให้สั่งพูด "ช่องว่าง" ด้วยเสียงระดับ 0 หนึ่งครั้ง
+  // คนเล่นไม่ได้ยินอะไร แต่ iOS ถือว่าเครื่องเสียงถูกเปิดแล้ว ครั้งต่อๆ ไปพูดได้ตลอด
+  unlockSpeech() {
+    if (this.speechUnlocked || !('speechSynthesis' in window)) return;
+    this.speechUnlocked = true;
+    try {
+      const silent = new SpeechSynthesisUtterance(' ');
+      silent.volume = 0;
+      speechSynthesis.speak(silent);
+    } catch { /* เบราว์เซอร์ที่ไม่รองรับก็แค่ไม่มีเสียงพูด ส่วนอื่นเล่นได้ปกติ */ }
   }
 
   get available() { return Boolean(Recognition) && window.isSecureContext && !IN_APP_BROWSER; }
@@ -92,6 +116,7 @@ export class Voice {
   }
 
   toggle() {
+    this.unlockSpeech();   // ต้องอยู่บรรทัดแรก: ตอนนี้ยังอยู่ใน "จังหวะที่นิ้วแตะจอ"
     if (this.listening) { this.recognizer?.stop(); return; }
     if (!this.available) { this.onState('error', this.unavailableReason); return; }
     const r = new Recognition();
@@ -199,6 +224,12 @@ export class Voice {
       || speechSynthesis.getVoices().find((v) => /^zh/i.test(v.lang));
     if (voice) u.voice = voice;
     speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+    // เว้น 1 จังหวะก่อนสั่งพูด: บน iOS ถ้า cancel() กับ speak() ติดกันเลย
+    // ประโยคใหม่จะถูกยกเลิกไปด้วยเป็นบางครั้ง
+    setTimeout(() => {
+      // บางครั้ง iOS ค้างสถานะ "หยุดพูดชั่วคราว" ไว้ (เช่นหลังสลับแอป) ต้องปลุกก่อน
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      speechSynthesis.speak(u);
+    }, 0);
   }
 }

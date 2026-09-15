@@ -840,6 +840,7 @@ function wireVoice(robot, driver, game, name) {
   if (form && input) {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
+      voice.unlockSpeech();   // ยังอยู่ในจังหวะที่นิ้วแตะปุ่มส่ง — iPhone ต้องการตรงนี้
       const text = input.value.trim();
       if (!text) return;
       input.value = '';
